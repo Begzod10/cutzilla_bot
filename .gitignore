@@ -1,0 +1,65 @@
+# --- Python bytecode & caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual envs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Editor/IDE ---
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Env / secrets ---
+.env
+.env.*
+*.env
+*.env.*.local
+
+# --- Logs & runtime files ---
+logs/
+*.log
+celerybeat-schedule*
+celerybeat.pid
+
+# --- Testing / tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.cache/
+
+# --- Builds / packages ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Data & temp (common for bots) ---
+tmp/
+temp/
+*.sqlite3
+*.db
+
+# --- Alembic / migrations ---
+# Keep your migrations in VCS!
+# If you generate local-only artifacts, ignore them here (rare).
+
+# --- Static/media (if generated at runtime) ---
+staticfiles/
+static_collected/
+media/
+alembic.ini
+alembic/
+/static

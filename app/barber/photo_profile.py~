@@ -1,0 +1,146 @@
+from aiogram import F, Router, Bot
+from aiogram.fsm.context import FSMContext
+from aiogram.types import FSInputFile, Message
+from sqlalchemy import select
+from app.barber.models import Barber
+from app.user.models import User
+from .keyboards import profile_image_keyboard
+from app.basic.keyboards import back_keyboard
+from app.states import FileUpload
+from app.db import AsyncSessionLocal
+import os
+
+barber_photo_router = Router()
+
+
+@barber_photo_router.message(F.text.in_(['🖼 Profil rasmi', '🖼 Фото профиля']))
+async def show_resume(message: Message):
+    redis_pool = message.bot.redis
+    async with AsyncSessionLocal() as session:
+        user_obj = (
+            await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id)
+            )
+        ).scalar_one_or_none()
+        if not user_obj:
+            await message.answer("❌ Foydalanuvchi topilmadi." if message.from_user.language_code == "uz"
+                                 else "❌ Пользователь не найден.")
+            return
+
+        barber = (
+            await session.execute(
+                select(Barber).where(Barber.user_id == user_obj.id)
+            )
+        ).scalar_one_or_none()
+
+        text = "Profil rasmi:" if user_obj.lang == "uz" else "Фото профиля:"
+        await redis_pool.set(f"user:{user_obj.telegram_id}:last_action", "barber_photo")
+
+        if barber and barber.img:
+            img_path = os.path.abspath(barber.img)
+            if os.path.isfile(img_path):
+                try:
+                    file = FSInputFile(img_path)
+                    await message.answer_photo(file, caption=text, reply_markup=profile_image_keyboard(user_obj.lang))
+                except Exception:
+                    await message.answer(
+                        f"{text}\n❗ Faylni yuborib bo‘lmadi." if user_obj.lang == "uz"
+                        else f"{text}\n❗ Не удалось загрузить файл.",
+                        reply_markup=profile_image_keyboard(user_obj.lang)
+                    )
+            else:
+                await message.answer(
+                    f"{text}\n❗ Profil rasmi topilmadi." if user_obj.lang == "uz"
+                    else f"{text}\n❗ Фото профиля не найдено.",
+                    reply_markup=profile_image_keyboard(user_obj.lang)
+                )
+        else:
+            await message.answer(
+                f"{text}\n❗ Profil rasmi topilmadi." if user_obj.lang == "uz"
+                else f"{text}\n❗ Фото профиля не найдено.",
+                reply_markup=profile_image_keyboard(user_obj.lang)
+            )
+
+
+@barber_photo_router.message(F.text.in_(['🖼 Profil rasmini o‘zgartirish', '🖼 Изменить фото профиля']))
+async def edit_photo(message: Message, state: FSMContext):
+    redis_pool = message.bot.redis
+    async with AsyncSessionLocal() as session:
+        user_obj = (
+            await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id)
+            )
+        ).scalar_one_or_none()
+        lang = user_obj.lang or "uz" if user_obj else "uz"
+        if user_obj:
+            await redis_pool.set(f"user:{user_obj.telegram_id}:last_action", "barber_photo")
+
+    text = (
+        "📸 Iltimos, yangi profil rasmingizni yuboring.\n\n"
+        "✅ Tavsiya etilgan formatlar: JPG, PNG yoki WEBP\n"
+        "⛔️ GIF, SVG, HEIC va boshqa noodatiy formatlar yuborilmasin.\n\n"
+        "Maksimal hajm — 5MB gacha."
+        if lang == "uz"
+        else
+        "📸 Пожалуйста, отправьте новое фото профиля.\n\n"
+        "✅ Рекомендуемые форматы: JPG, PNG или WEBP\n"
+        "⛔️ Нельзя отправлять GIF, SVG, HEIC и другие нестандартные форматы.\n\n"
+        "Максимальный размер — до 5MB."
+    )
+    await message.answer(text, reply_markup=back_keyboard(lang))
+    await state.set_state(FileUpload.waiting_for_file)
+
+
+@barber_photo_router.message(FileUpload.waiting_for_file, F.photo)
+async def handle_profile_photo_upload(message: Message, state: FSMContext, bot: Bot):
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+    UPLOAD_FOLDER = "static/profile_photos/"
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+    photo = message.photo[-1]
+    file_size = photo.file_size
+    lang = message.from_user.language_code or "uz"
+
+    # ✅ Check size
+    if file_size > MAX_FILE_SIZE:
+        await message.answer(
+            "❗ Rasm hajmi 5MB dan oshmasligi kerak!" if lang == "uz"
+            else "❗ Размер изображения не должен превышать 5MB!"
+        )
+        return
+
+    # ✅ Download file
+    file_info = await bot.get_file(photo.file_id)
+    extension = ".jpg"
+    file_path = os.path.join(UPLOAD_FOLDER, f"{message.from_user.id}{extension}")
+    downloaded_file = await bot.download_file(file_info.file_path)
+
+    with open(file_path, "wb") as f:
+        f.write(downloaded_file.read())
+
+    # ✅ Save in DB
+    async with AsyncSessionLocal() as session:
+        user_obj = (
+            await session.execute(
+                select(User).where(User.telegram_id == message.from_user.id)
+            )
+        ).scalar_one_or_none()
+        if not user_obj:
+            await message.answer("❌ User not found.")
+            return
+
+        barber_obj = (
+            await session.execute(
+                select(Barber).where(Barber.user_id == user_obj.id)
+            )
+        ).scalar_one_or_none()
+        if barber_obj:
+            barber_obj.img = file_path
+            await session.commit()
+
+        text_success = "✅ Profil rasmi muvaffaqiyatli saqlandi!" if lang == "uz" else "✅ Фото профиля успешно обновлено!"
+        caption = "Profil rasmi:" if lang == "uz" else "Фото профиля:"
+
+    await message.answer(text_success)
+    await message.answer_photo(FSInputFile(file_path), caption=caption, reply_markup=profile_image_keyboard(lang))
+    await state.clear()
