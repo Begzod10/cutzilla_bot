@@ -366,7 +366,6 @@ async def get_password(message: Message, state: FSMContext):
 
     lang = (user.lang or "uz").lower()
     is_ru = lang.startswith("ru")
-    print(payload.get("barber"))
     barber_data = payload.get("barber") if ok else None
     if not barber_data:
         text = ("❌ Неверное имя пользователя или пароль.\nПожалуйста, попробуйте ещё раз."
@@ -403,37 +402,5 @@ async def get_password(message: Message, state: FSMContext):
             user.user_type = "barber"
             barber.user_id = user.id
             await session.commit()
-
-            # Upsert services
-            # barber_services = barber_data.get("barber_services", []) or []
-            # for service in barber_services:
-            #     svc_id = service.get("id")
-            #     svc_price = service.get("price")
-            #     if svc_id is None:
-            #         continue
-            #
-            #     # Ensure Service exists
-            #     svc_res = await session.execute(select(Service).where(Service.id == svc_id).limit(1))
-            #     get_service = svc_res.scalar_one_or_none()
-            #     if not get_service:
-            #         # skip unknown service ids gracefully
-            #         continue
-            #
-            #     # Check existing BarberService
-            #     bs_res = await session.execute(
-            #         select(BarberService)
-            #         .where(BarberService.barber_id == barber.id, BarberService.service_id == get_service.id)
-            #         .limit(1)
-            #     )
-            #     existing = bs_res.scalar_one_or_none()
-            #     if not existing:
-            #         session.add(BarberService(
-            #             barber_id=barber.id,
-            #             service_id=get_service.id,
-            #             price=svc_price
-            #         ))
-            #     else:
-            #         existing.price = svc_price
-
     await state.clear()
     await message.answer(LOGIN_TEXT[lang]["welcome"], reply_markup=barber_main_menu(lang))

@@ -9,6 +9,7 @@ import redis.asyncio as redis
 
 # Basic
 from app.basic.handlers import router
+from app.basic.commands import commands_router
 
 # Barber
 from app.barber.handlers import barber_router
@@ -62,6 +63,8 @@ async def main():
 
     # Routers
     dp.include_router(router)
+    dp.include_router(commands_router)
+
     dp.include_router(barber_router)
     dp.include_router(barber_photo_router)
     dp.include_router(barber_resume)
