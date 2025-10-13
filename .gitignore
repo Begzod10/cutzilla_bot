@@ -29,6 +29,8 @@ logs/
 *.log
 celerybeat-schedule*
 celerybeat.pid
+celerybeat-schedule.dir
+celerybeat-schedule.dat
 
 # --- Testing / tooling caches ---
 .pytest_cache/
