@@ -363,7 +363,7 @@ async def get_password(message: Message, state: FSMContext):
     if not user:
         await message.answer("❌ Foydalanuvchi topilmadi. Iltimos, qayta /start bosing.")
         return
-
+    print(payload)
     lang = (user.lang or "uz").lower()
     is_ru = lang.startswith("ru")
     barber_data = payload.get("barber") if ok else None
