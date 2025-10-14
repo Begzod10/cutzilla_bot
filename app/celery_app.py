@@ -19,16 +19,18 @@ celery.conf.timezone = 'Asia/Tashkent'
 celery.conf.beat_schedule = {
     'update-services-every-minute': {
         'task': 'app.tasks.update_services',
-        'schedule': crontab(minute='*'),
+        'schedule': timedelta(hours=1),
+        # 'schedule': crontab(minute='*'),
     },
     'create-barber-schedule-every-minute': {
         'task': 'app.tasks.create_barber_schedule',
-        'schedule': crontab(minute='*'),
+        'schedule': crontab(minute=0, hour=12),
+        # 'schedule': crontab(minute='*'),
     },
     "notify-upcoming-requests": {
         "task": "app.client.tasks.notify_upcoming_requests",
-        # "schedule": timedelta(minutes=90),
-        'schedule': crontab(minute='*'),
+        "schedule": timedelta(minutes=90),
+        # 'schedule': crontab(minute='*'),
     }
 }
 
