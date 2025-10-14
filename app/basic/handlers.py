@@ -159,7 +159,7 @@ async def handle_user_role_selection(message: Message, state: FSMContext):
         if role == "client":
             # set role
             user.user_type = "client"
-
+            await session.commit()
             # ensure Client exists
             exist_client_id = (
                 await session.execute(
@@ -363,7 +363,7 @@ async def get_password(message: Message, state: FSMContext):
     if not user:
         await message.answer("❌ Foydalanuvchi topilmadi. Iltimos, qayta /start bosing.")
         return
-    print(payload)
+
     lang = (user.lang or "uz").lower()
     is_ru = lang.startswith("ru")
     barber_data = payload.get("barber") if ok else None
@@ -388,7 +388,7 @@ async def get_password(message: Message, state: FSMContext):
             user.user_type = "barber"
             # Ensure Barber exists
             res = await session.execute(
-                select(Barber).filter(Barber.login == username).limit(1))
+                select(Barber).filter(Barber.user_id == user.id).limit(1))
             barber = res.scalar_one_or_none()
 
             if not barber:
@@ -401,6 +401,7 @@ async def get_password(message: Message, state: FSMContext):
             user.platform_id = payload.get("user_id")
             user.user_type = "barber"
             barber.user_id = user.id
+            barber.login = username
             await session.commit()
     await state.clear()
     await message.answer(LOGIN_TEXT[lang]["welcome"], reply_markup=barber_main_menu(lang))
