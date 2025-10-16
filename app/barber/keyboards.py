@@ -49,23 +49,28 @@ def barber_service_menu_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
     )
 
 
-def service_selection_inline_keyboard(all_services, barber_services, lang="uz"):
-    active_ids = {bs.service_id for bs in barber_services if bs.is_active}
-    keyboard = []
+def service_selection_inline_keyboard(all_services, barber_services, lang: str = "uz") -> InlineKeyboardMarkup:
+    active_ids = {bs.service_id for bs in barber_services if getattr(bs, "is_active", False)}
+    buttons: list[InlineKeyboardButton] = []
 
     for service in all_services:
-        is_active = service.id in active_ids
+        is_active = getattr(service, "id", None) in active_ids
         mark = "✅" if is_active else "❌"
-        name = getattr(service, f"name_{lang}", None) or (
-            service.name_uz if lang == "uz" else service.name_ru
-        )
-        button = InlineKeyboardButton(
-            text=f"{mark} {name}",
-            callback_data=f"toggle_service:{service.id}"
-        )
-        keyboard.append([button])
+        # name_<lang> fallback -> uz/ru
+        name = getattr(service, f"name_{lang}", None) \
+               or (service.name_uz if lang == "uz" else getattr(service, "name_ru", None)) \
+               or getattr(service, "name_uz", "—")
 
-    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+        buttons.append(
+            InlineKeyboardButton(
+                text=f"{mark} {name}",
+                callback_data=f"toggle_service:{service.id}"
+            )
+        )
+
+    # chunk into rows of 2
+    rows = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def price_action_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
