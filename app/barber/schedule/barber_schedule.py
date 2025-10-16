@@ -282,7 +282,7 @@ async def on_req_status(cb: CallbackQuery, callback_data: ReqStatusCB, state: FS
             return
 
         # Update status
-        cr.status = (action == "accept")
+        cr.status = "accept" if action == "accept" else "pending"
         await session.flush()
 
         # Recompute schedule aggregates and commit
@@ -290,7 +290,7 @@ async def on_req_status(cb: CallbackQuery, callback_data: ReqStatusCB, state: FS
         await session.commit()
 
         # Reload for rendering (fully eager)
-        cr = await load_request_full(session, barber.id, req_id)
+        # cr = await load_request_full(session, barber.id, req_id)
         text = "🧾 " + render_request_block(cr, lang)
         kb = kb_request_manage(cr.id, sched_id, lang, getattr(cr, "status", None), page)
 

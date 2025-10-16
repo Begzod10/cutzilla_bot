@@ -267,16 +267,16 @@ async def kb_add_service_list(
         nav_row: List[InlineKeyboardButton] = []
         if page > 1:
             nav_row.append(InlineKeyboardButton(
-                "◀️",
+                text="◀️",
                 callback_data=ReqAddSvcCB(req_id=req_id, sid=sched_id, page=page - 1).pack()
             ))
         nav_row.append(InlineKeyboardButton(
-            f"{page}/{pages}",
+            text=f"{page}/{pages}",
             callback_data=ReqAddSvcCB(req_id=req_id, sid=sched_id, page=page).pack()
         ))
         if page < pages:
             nav_row.append(InlineKeyboardButton(
-                "▶️",
+                text="▶️",
                 callback_data=ReqAddSvcCB(req_id=req_id, sid=sched_id, page=page + 1).pack()
             ))
         rows.append(nav_row)

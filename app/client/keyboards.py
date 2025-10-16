@@ -6,7 +6,7 @@ from app.barber.schedule.schedule_utils import _working_time_windows, _overlaps,
 from datetime import datetime, timedelta, time, date
 from typing import List, Tuple
 from .callback_data import SchedPickSlotCBClient, SchedPickSlotCBClientEdit
-
+from typing import List, Optional
 
 def location_keyboard(lang: str) -> ReplyKeyboardMarkup:
     if lang == "ru":
@@ -471,97 +471,104 @@ async def kb_day_slots_by_sched_client_to_change(
 def build_barber_services_kb(
         barber_services,
         lang: str,
-        selected_ids: list[int] = None
+        selected_ids: Optional[List[int]] = None
 ) -> InlineKeyboardMarkup:
     if selected_ids is None:
         selected_ids = []
 
-    buttons = []
+    service_buttons: List[InlineKeyboardButton] = []
     confirm_text = "✅ Confirm"
 
     for bs in barber_services:
-        service = bs.service
+        service = getattr(bs, "service", None)
         if not service:
             continue
 
-        # Language-dependent strings
-        if lang == "uz":
-            name = service.name_uz or "❓"
-            price_text = f"{bs.price:,}".replace(",", " ") + " so'm" if bs.price else "—"
-            duration_text = f"{bs.duration} daqiqa" if bs.duration else "—"
-            confirm_text = "✅ Tasdiqlash"
+        price = getattr(bs, "price", None)
+        duration = getattr(bs, "duration", None)
 
+        if lang == "uz":
+            name = getattr(service, "name_uz", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " so'm") if price else "—"
+            duration_text = (f"{duration} daqiqa") if duration else "—"
+            confirm_text = "✅ Tasdiqlash"
         else:
-            name = service.name_ru or "❓"
-            price_text = f"{bs.price:,}".replace(",", " ") + " сум" if bs.price else "—"
-            duration_text = f"{bs.duration} минут" if bs.duration else "—"
+            name = getattr(service, "name_ru", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " сум") if price else "—"
+            duration_text = (f"{duration} минут") if duration else "—"
             confirm_text = "✅ Подтвердить"
 
-        # Mark selected
-        prefix = "✅ " if bs.id in selected_ids else ""
+        prefix = "✅ " if getattr(bs, "id", None) in selected_ids else ""
         button_text = f"{prefix}{name} • {price_text} • {duration_text}"
 
-        buttons.append([  # each button in its own row
+        service_buttons.append(
             InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"choose_service_client:{bs.id}"
             )
-        ])
+        )
 
-    # Confirm + Back buttons in one row
-    buttons.append([
-        InlineKeyboardButton(text=confirm_text, callback_data="confirm_services")
-    ])
+    # two-column rows
+    rows: List[List[InlineKeyboardButton]] = [
+        service_buttons[i:i + 2] for i in range(0, len(service_buttons), 2)
+    ]
 
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    # final row with Confirm
+    rows.append([InlineKeyboardButton(text=confirm_text, callback_data="confirm_services")])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_barber_edit_services_kb(
-        barber_services,
-        lang: str,
-        selected_ids: list[int] = None
+    barber_services,
+    lang: str,
+    selected_ids: Optional[List[int]] = None
 ) -> InlineKeyboardMarkup:
     if selected_ids is None:
         selected_ids = []
 
-    buttons = []
+    service_buttons: List[InlineKeyboardButton] = []
     confirm_text = "✅ Confirm"
 
     for bs in barber_services:
-        service = bs.service
+        service = getattr(bs, "service", None)
         if not service:
             continue
 
-        # Language-dependent strings
-        if lang == "uz":
-            name = service.name_uz or "❓"
-            price_text = f"{bs.price:,}".replace(",", " ") + " so'm" if bs.price else "—"
-            duration_text = f"{bs.duration} daqiqa" if bs.duration else "—"
-            confirm_text = "✅ Tasdiqlash"
+        price = getattr(bs, "price", None)
+        duration = getattr(bs, "duration", None)
 
+        if lang == "uz":
+            name = getattr(service, "name_uz", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " so'm") if price else "—"
+            duration_text = (f"{duration} daqiqa") if duration else "—"
+            confirm_text = "✅ Tasdiqlash"
         else:
-            name = service.name_ru or "❓"
-            price_text = f"{bs.price:,}".replace(",", " ") + " сум" if bs.price else "—"
-            duration_text = f"{bs.duration} минут" if bs.duration else "—"
+            name = getattr(service, "name_ru", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " сум") if price else "—"
+            duration_text = (f"{duration} минут") if duration else "—"
             confirm_text = "✅ Подтвердить"
 
-        # Mark selected
-        prefix = "✅ " if bs.id in selected_ids else ""
+        prefix = "✅ " if getattr(bs, "id", None) in selected_ids else ""
         button_text = f"{prefix}{name} • {price_text} • {duration_text}"
 
-        buttons.append([  # each button in its own row
+        service_buttons.append(
             InlineKeyboardButton(
                 text=button_text,
                 callback_data=f"edit_choose_service_client:{bs.id}"
             )
-        ])
+        )
 
-    # Confirm + Back buttons in one row
-    buttons.append([
+    # Two-column grid for services
+    rows: List[List[InlineKeyboardButton]] = [
+        service_buttons[i:i+2] for i in range(0, len(service_buttons), 2)
+    ]
+
+    rows.append([
         InlineKeyboardButton(text=confirm_text, callback_data="edit_confirm_services")
     ])
 
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _can_edit_request(cr, now: datetime = None, tzinfo=None) -> bool:

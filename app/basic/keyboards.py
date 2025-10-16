@@ -24,18 +24,17 @@ def get_login_keyboard(lang: str) -> ReplyKeyboardMarkup:
 def user_role_keyboard(lang: str) -> ReplyKeyboardMarkup:
     texts = {
         "uz": ["👤 Mijoz", "✂️ Sartarosh"],
-        "ru": ["👤 Клиент", "✂️ Парикмахер"]
+        "ru": ["👤 Клиент", "✂️ Парикмахер"],
     }
-
-    client_text, barber_text = texts.get(lang, ["👤 Mijoz", "✂️ Sartarosh"])  # fallback to Uzbek
+    client_text, barber_text = texts.get(lang, ["👤 Mijoz", "✂️ Sartarosh"])
 
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=client_text)],
-            [KeyboardButton(text=barber_text)]
+            [KeyboardButton(text=client_text), KeyboardButton(text=barber_text)]
         ],
         resize_keyboard=True
     )
+
 
 
 def back_keyboard(lang: str) -> ReplyKeyboardMarkup:
@@ -81,8 +80,8 @@ def barber_main_menu(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=buttons[0]), KeyboardButton(text=buttons[1]), KeyboardButton(text=buttons[3])],
-            [KeyboardButton(text=buttons[2]), KeyboardButton(text=buttons[4]), KeyboardButton(text=buttons[5])],
-            [KeyboardButton(text=buttons[6])]
+            [KeyboardButton(text=buttons[2]), KeyboardButton(text=buttons[4]), KeyboardButton(text=buttons[5])]
+            # [KeyboardButton(text=buttons[6])]
         ],
         resize_keyboard=True
     )
@@ -105,8 +104,8 @@ def client_main_menu(lang: str) -> ReplyKeyboardMarkup:
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text=send_location_text), KeyboardButton(text=barbers_text)],
-            [KeyboardButton(text=my_barbers_text), KeyboardButton(text=change_lang_text)],
-            [KeyboardButton(text=back_text)]
+            [KeyboardButton(text=my_barbers_text), KeyboardButton(text=change_lang_text)]
+            # [KeyboardButton(text=back_text)]
         ],
         resize_keyboard=True
     )

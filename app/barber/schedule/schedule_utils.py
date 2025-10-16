@@ -408,7 +408,7 @@ async def _day_occupancy_stats(session, barber_id: int, day: date) -> Tuple[str,
 async def load_request_full(session, barber_id: int, req_id: int) -> Optional[ClientRequest]:
     q = (
         select(ClientRequest)
-        .where(ClientRequest.id == req_id, ClientRequest.barber_id == barber_id, ClientRequest.status == "accept")
+        .where(ClientRequest.id == req_id, ClientRequest.barber_id == barber_id)
         .options(
             selectinload(ClientRequest.client).selectinload(Client.user),
             selectinload(ClientRequest.services)

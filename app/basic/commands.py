@@ -7,7 +7,7 @@ from app.db import AsyncSessionLocal
 from app.user.models import User
 from app.client.models import Client
 from app.barber.models import Barber
-from .keyboards import client_main_menu, barber_main_menu
+from .keyboards import client_main_menu, barber_main_menu, user_role_keyboard
 
 commands_router = Router()
 
@@ -90,3 +90,21 @@ async def cmd_help(message: Message):
     lang = await _get_lang(message.from_user.id)
     text = HELP_RU if (lang or "").lower().startswith("ru") else HELP_UZ
     await message.answer(text, parse_mode="Markdown")
+
+
+@commands_router.message(F.text == "/exit")
+async def cmd_exit(message: Message, state: FSMContext):
+    await state.clear()
+    async with AsyncSessionLocal() as session:  # read-only
+        res = await session.execute(select(User).where(User.telegram_id == message.from_user.id))
+        user = res.scalar_one_or_none()
+
+        if not user:
+            await message.answer("❌ Foydalanuvchi topilmadi. Iltimos, qayta /start bosing.")
+            return
+
+        text = ("Вы успешно вышли из системы"
+                if (user.lang or "uz").startswith("ru")
+                else "Tizimdan muvaffaqiyatli chiqildingiz")
+
+        await message.answer(text, reply_markup=user_role_keyboard(user.lang))
