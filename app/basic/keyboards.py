@@ -36,7 +36,6 @@ def user_role_keyboard(lang: str) -> ReplyKeyboardMarkup:
     )
 
 
-
 def back_keyboard(lang: str) -> ReplyKeyboardMarkup:
     texts = {
         "uz": "⬅️ Orqaga",

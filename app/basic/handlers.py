@@ -120,8 +120,8 @@ async def choose_language(message: Message, state: FSMContext):
             if lang_code.startswith("ru")
             else "👋 Xush kelibsiz!\n\n🔽 Iltimos, quyidan rolingizni tanlang:")
 
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=user_role_keyboard(lang_code))
-    await message.answer(text)
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=client_main_menu(user.lang))
+    # await message.answer(text)
 
     # also sync the newly created user (role will be 'user' until they choose)
     await _enqueue_user_sync({

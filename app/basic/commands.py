@@ -8,6 +8,7 @@ from app.user.models import User
 from app.client.models import Client
 from app.barber.models import Barber
 from .keyboards import client_main_menu, barber_main_menu, user_role_keyboard
+from app.states import LoginState
 
 commands_router = Router()
 
@@ -108,3 +109,27 @@ async def cmd_exit(message: Message, state: FSMContext):
                 else "Tizimdan muvaffaqiyatli chiqildingiz")
 
         await message.answer(text, reply_markup=user_role_keyboard(user.lang))
+
+
+@commands_router.message(F.text == "/barber")
+async def cmd_barber(message: Message, state: FSMContext):
+    tg_id = message.from_user.id
+    async with AsyncSessionLocal() as session:
+        res = await session.execute(select(User).where(User.telegram_id == tg_id))
+        user = res.scalar_one_or_none()
+        if not user:
+            await message.answer("❌ Foydalanuvchi topilmadi. Iltimos, qayta /start bosing.")
+            return
+
+        lang = (user.lang or "uz").lower()
+    msg = "✂️ Вы выбрали роль парикмахера." if lang.startswith("ru") else "✂️ Siz sartarosh sifatida tanlandingiz."
+    await message.answer(msg)
+
+    prompt = "📝 Пожалуйста, введите ваше имя пользователя:" if lang.startswith("ru") \
+        else "📝 Iltimos, usernameni kiriting:"
+    # keyboard = back_keyboard(lang)
+    await message.answer(prompt)
+
+    # Keep last_action aligned with FSM
+    # await redis_pool.set(f"user:{tg_id}:last_action", "waiting_for_username")
+    await state.set_state(LoginState.waiting_for_username)
