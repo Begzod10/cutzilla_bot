@@ -16,10 +16,179 @@ from .keyboards import (
     build_profile_button
 
 )
-
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 
 barber_requests = Router()
+
+PAGE_SIZE = 5
+
+
+def _status_title(status: str, lang: str) -> str:
+    ru = (lang or "").lower().startswith("ru")
+    mapping = {
+        "pending": ("⏳ Kutilayotgan", "⏳ В ожидании"),
+        "accept": ("✅ Qabul qilingan", "✅ Принятые"),
+        "deny": ("❌ Rad etilgan", "❌ Отклонённые"),
+    }
+    uz, ru_t = mapping.get(status, ("⏳ Kutilayotgan", "⏳ В ожидании"))
+    return ru_t if ru else uz
+
+
+def _filter_tabs_kb(active_status: str, page: int, lang: str) -> list[list[InlineKeyboardButton]]:
+    # show three tabs, active one is "dimmed"
+    def tab(status, text):
+        if status == active_status:
+            return InlineKeyboardButton(text=f"• {text} •", callback_data="noop")
+        return InlineKeyboardButton(text=text, callback_data=f"reqflt:{status}:1")
+
+    uz = not (lang or "").lower().startswith("ru")
+    texts = {
+        "pending": "⏳ Kutilayotgan" if uz else "⏳ В ожидании",
+        "accept": "✅ Qabul qilingan" if uz else "✅ Принятые",
+        "deny": "❌ Rad etilgan" if uz else "❌ Отклонённые",
+    }
+    return [[
+        tab("pending", texts["pending"]),
+        tab("accept", texts["accept"]),
+        tab("deny", texts["deny"]),
+    ]]
+
+
+def _nav_row_kb(status: str, page: int, has_prev: bool, has_next: bool, lang: str) -> list[InlineKeyboardButton]:
+    btns = []
+    if has_prev:
+        btns.append(InlineKeyboardButton(text="⬅️ Prev", callback_data=f"reqpage:{status}:{page - 1}"))
+    btns.append(InlineKeyboardButton(text="🔄 Refresh", callback_data=f"reqpage:{status}:{page}"))
+    if has_next:
+        btns.append(InlineKeyboardButton(text="Next ➡️", callback_data=f"reqpage:{status}:{page + 1}"))
+    return btns
+
+
+async def _build_requests_query(status: str, barber_id: int):
+    now = datetime.now()
+    today = date.today()
+    base = select(ClientRequest).where(
+        ClientRequest.barber_id == barber_id,
+        ClientRequest.status == status,
+    )
+    if status == "pending":
+        base = base.where(or_(
+            and_(ClientRequest.from_time.is_not(None), ClientRequest.from_time >= now),
+            and_(ClientRequest.from_time.is_(None), cast(ClientRequest.date, Date) >= today),
+        ))
+    else:
+        base = base.where(cast(ClientRequest.date, Date) >= today)
+
+    return base.order_by(func.coalesce(ClientRequest.from_time, ClientRequest.date).asc()).options(
+        selectinload(ClientRequest.services)
+        .selectinload(ClientRequestService.barber_service)
+        .selectinload(BarberService.service),
+        selectinload(ClientRequest.client).selectinload(Client.user),
+    )
+
+
+async def _count_requests(session, q):
+    # Convert the selectable to a subquery and count rows
+    sub = q.subquery()
+    cnt_q = select(func.count()).select_from(sub)
+    return (await session.execute(cnt_q)).scalar_one() or 0
+
+
+def _paginate(items, page: int, page_size: int):
+    start = (page - 1) * page_size
+    end = start + page_size
+    return items[start:end]
+
+
+def _list_header(lang: str, status: str, page: int, total: int):
+    today = date.today().strftime('%Y-%m-%d')
+    title = _status_title(status, lang)
+    ru = (lang or "").lower().startswith("ru")
+    if ru:
+        return f"📨 {title}\n📅 На {today}\n📄 Страница {page} (всего {total})"
+    return f"📨 {title}\n📅 {today} holati\n📄 {page}-sahifa (jami {total})"
+
+
+def _wrap_nav_kb(active_status: str, page: int, has_prev: bool, has_next: bool, lang: str) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        *_filter_tabs_kb(active_status, page, lang),
+        _nav_row_kb(active_status, page, has_prev, has_next, lang)
+    ])
+    return kb
+
+
+async def _send_requests_page(message: Message, barber_id: int, lang: str, status: str, page: int = 1,
+                              page_size: int = PAGE_SIZE):
+    async with AsyncSessionLocal() as session:
+        q = await _build_requests_query(status, barber_id)
+        result = await session.execute(q)
+        all_items = result.scalars().all()
+        total = len(all_items)
+        if total == 0:
+            await message.answer(_t("no_requests", lang), reply_markup=_wrap_nav_kb(status, page, False, False, lang))
+            return
+
+        # current page slice
+        page_items = _paginate(all_items, page, page_size)
+        has_prev = page > 1
+        has_next = (page * page_size) < total
+
+        # header with tabs + nav
+        await message.answer(_list_header(lang, status, page, total),
+                             reply_markup=_wrap_nav_kb(status, page, has_prev, has_next, lang))
+
+        # render each item as your existing detailed card with Accept/Deny + profile
+        for cr in page_items:
+            d = cr.date.strftime('%Y-%m-%d') if cr.date else "—"
+            ft = cr.from_time.strftime('%H:%M') if cr.from_time else "—"
+            tt = cr.to_time.strftime('%H:%M') if cr.to_time else "—"
+            cmt = cr.comment or "—"
+
+            client_user = getattr(getattr(cr, "client", None), "user", None)
+            client_fullname = "—"
+            if client_user:
+                first = getattr(client_user, "name", "") or ""
+                last = getattr(client_user, "surname", "") or ""
+                client_fullname = (f"{first} {last}").strip() or "—"
+
+            svc_lines, total_price, total_duration = [], 0, 0
+            for crs in (cr.services or []):
+                bs = getattr(crs, "barber_service", None)
+                svc = getattr(bs, "service", None) if bs else None
+
+                price = getattr(bs, "price", 0) if bs and (bs.price is not None) else 0
+                total_price += price
+
+                dur_mins = (
+                    crs.duration if (hasattr(crs, "duration") and crs.duration is not None)
+                    else (
+                        bs.duration if (bs is not None and hasattr(bs, "duration") and bs.duration is not None) else 0)
+                )
+                total_duration += int(dur_mins or 0)
+
+                svc_name = _service_name_by_lang(svc, lang)
+                svc_lines.append(f"    • {svc_name} — {_fmt_money(price)} so'm — ⏱ {_fmt_duration(dur_mins)}")
+
+            services_block = "\n".join(svc_lines) if svc_lines else "    —"
+
+            text = (
+                f"👤 Mijoz: {client_fullname}\n"
+                f"  📅 {d}\n"
+                f"  🕘 So‘ralgan vaqt: {ft}–{tt}\n"
+                f"  🧾 {cmt}\n"
+                f"  🧰 Xizmatlar:\n{services_block}\n"
+                f"  💵 Jami: {_fmt_money(total_price)} so'm\n"
+                f"  ⏳ Umumiy davomiylik: {_fmt_duration(total_duration)}"
+            )
+
+            kb = request_row_kb(cr.id, lang)
+            if client_user:
+                prof_btn = build_profile_button(client_user, lang)
+                if prof_btn:
+                    kb.inline_keyboard.append([prof_btn])
+
+            await message.answer(text, reply_markup=kb)
 
 
 async def _notify_client_about_request(bot, session, cr):
@@ -207,128 +376,81 @@ async def recalc_schedule_stats(session: AsyncSessionLocal, schedule_id: int) ->
 @barber_requests.message(F.text.in_(['📨 So‘rovlar', '📨 Запросы']))
 async def requests_list(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
-    today = date.today()
-    # current local time, strip seconds/micros to match DB TIME precision
-    current_time = datetime.now().time().replace(second=0, microsecond=0)
-    async with AsyncSessionLocal() as session:  # type: AsyncSession
-        # --- User ---
+    async with AsyncSessionLocal() as session:
         user: Optional[User] = (
-            await session.execute(select(User).where(User.telegram_id == telegram_id))
-        ).scalar_one_or_none()
+            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
         if not user:
             await message.answer(_t("user_not_found", "uz"))
             return
-
         lang = getattr(user, "lang", "uz") or "uz"
-
-        # --- Barber ---
         barber: Optional[Barber] = (
-            await session.execute(
-                select(Barber).where(
-                    Barber.user_id == user.id,
-                    Barber.login == user.platform_login
-                )
-            )
+            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
         ).scalar_one_or_none()
         if not barber:
             await message.answer(_t("barber_not_found", lang))
             return
 
-        # --- Pending requests starting from "now":
-        # (date in the future) OR (date is today AND from_time >= now)
+    # show PENDING page 1 (it will append cards below header)
+    await _send_requests_page(message, barber.id, lang, status="pending", page=1, page_size=PAGE_SIZE)
 
-        now = datetime.now()
-        today = date.today()
 
-        q = (
-            select(ClientRequest)
-            .where(
-                ClientRequest.barber_id == barber.id,
-                ClientRequest.status == "pending",
-                or_(
-                    # Normal case: there is a start moment — show upcoming
-                    and_(
-                        ClientRequest.from_time.is_not(None),
-                        ClientRequest.from_time >= now,
-                    ),
-                    # Fallback: no from_time → keep anything today or later by DATE
-                    and_(
-                        ClientRequest.from_time.is_(None),
-                        cast(ClientRequest.date, Date) >= today,
-                    ),
-                ),
-            )
-            # Chronological: first by actual start, else by date
-            .order_by(
-                func.coalesce(ClientRequest.from_time, ClientRequest.date).asc()
-            )
-            .options(
-                selectinload(ClientRequest.services)
-                .selectinload(ClientRequestService.barber_service)
-                .selectinload(BarberService.service),
-                selectinload(ClientRequest.client).selectinload(Client.user),
-            )
-        )
+@barber_requests.callback_query(F.data.startswith("reqflt:"))
+async def switch_filter_tab(cb: CallbackQuery):
+    try:
+        _, status, page_str = cb.data.split(":")
+        page = int(page_str)
+    except Exception:
+        await cb.answer("Bad filter", show_alert=True)
+        return
 
-        result = await session.execute(q)
-        requests_list = result.scalars().all()
-
-        if not requests_list:
-            await message.answer(_t("no_requests", lang))
+    telegram_id = cb.from_user.id
+    async with AsyncSessionLocal() as session:
+        user: Optional[User] = (
+            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
+        if not user:
+            await cb.answer(_t("user_not_found", "uz"), show_alert=True)
+            return
+        lang = getattr(user, "lang", "uz") or "uz"
+        barber: Optional[Barber] = (
+            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
+        ).scalar_one_or_none()
+        if not barber:
+            await cb.answer(_t("barber_not_found", lang), show_alert=True)
             return
 
-        await message.answer(_t("header", lang).format(date=today.strftime('%Y-%m-%d')))
+    # Append the new page below; keep existing messages (so "new data" is added, not replaced)
+    await _send_requests_page(cb.message, barber.id, lang, status=status, page=page, page_size=PAGE_SIZE)
+    await cb.answer()
 
-        for cr in requests_list:
-            d = cr.date.strftime('%Y-%m-%d') if cr.date else "—"
-            ft = cr.from_time.strftime('%H:%M') if cr.from_time else "—"
-            tt = cr.to_time.strftime('%H:%M') if cr.to_time else "—"
-            cmt = cr.comment or "—"
 
-            client_user = getattr(getattr(cr, "client", None), "user", None)
-            client_fullname = "—"
-            if client_user:
-                first = getattr(client_user, "name", "") or ""
-                last = getattr(client_user, "surname", "") or ""
-                client_fullname = (f"{first} {last}").strip() or "—"
+# ----- Inline callbacks: pagination -----
+@barber_requests.callback_query(F.data.startswith("reqpage:"))
+async def paginate_requests(cb: CallbackQuery):
+    try:
+        _, status, page_str = cb.data.split(":")
+        page = int(page_str)
+    except Exception:
+        await cb.answer("Bad page", show_alert=True)
+        return
 
-            svc_lines, total_price, total_duration = [], 0, 0
-            for crs in (cr.services or []):
-                bs = getattr(crs, "barber_service", None)
-                svc = getattr(bs, "service", None) if bs else None
+    telegram_id = cb.from_user.id
+    async with AsyncSessionLocal() as session:
+        user: Optional[User] = (
+            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
+        if not user:
+            await cb.answer(_t("user_not_found", "uz"), show_alert=True)
+            return
+        lang = getattr(user, "lang", "uz") or "uz"
+        barber: Optional[Barber] = (
+            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
+        ).scalar_one_or_none()
+        if not barber:
+            await cb.answer(_t("barber_not_found", lang), show_alert=True)
+            return
 
-                price = getattr(bs, "price", 0) if bs and (bs.price is not None) else 0
-                total_price += price
-
-                dur_mins = (
-                    crs.duration if (hasattr(crs, "duration") and crs.duration is not None)
-                    else (
-                        bs.duration if (bs is not None and hasattr(bs, "duration") and bs.duration is not None) else 0)
-                )
-                total_duration += int(dur_mins or 0)
-
-                svc_name = _service_name_by_lang(svc, getattr(user, "lang", "uz"))
-                svc_lines.append(f"    • {svc_name} — {_fmt_money(price)} so'm — ⏱ {_fmt_duration(dur_mins)}")
-
-            services_block = "\n".join(svc_lines) if svc_lines else "    —"
-
-            text = (
-                f"👤 Mijoz: {client_fullname}\n"
-                f"  📅 {d}\n"
-                f"  🕘 So‘ralgan vaqt: {ft}–{tt}\n"
-                f"  🧾 {cmt}\n"
-                f"  🧰 Xizmatlar:\n{services_block}\n"
-                f"  💵 Jami: {_fmt_money(total_price)} so'm\n"
-                f"  ⏳ Umumiy davomiylik: {_fmt_duration(total_duration)}"
-            )
-
-            kb = request_row_kb(cr.id, getattr(user, "lang", "uz"))
-            if client_user:
-                prof_btn = build_profile_button(client_user, getattr(user, "lang", "uz"))
-                if prof_btn:
-                    kb.inline_keyboard.append([prof_btn])
-
-            await message.answer(text, reply_markup=kb)
+    # As with filter switch, just append the requested page
+    await _send_requests_page(cb.message, barber.id, lang, status=status, page=page, page_size=PAGE_SIZE)
+    await cb.answer()
 
 
 @barber_requests.callback_query(F.data.startswith("req:"))
