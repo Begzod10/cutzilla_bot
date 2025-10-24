@@ -82,58 +82,54 @@ async def choose_language(message: Message, state: FSMContext):
 
     async with AsyncSessionLocal() as session:
         async with session.begin():
-            result = await session.execute(
+            user = await session.scalar(
                 select(User).where(User.telegram_id == message.from_user.id)
             )
-            user = result.scalar_one_or_none()
+
             if user:
+                # UPDATE path
                 user.lang = lang_code
-                # session.begin() will commit on exit
                 role_for_django = "barber" if user.user_type == "barber" else "user"
-                reply_markup = barber_main_menu(user.lang) if user.user_type == "barber" else client_main_menu(
-                    user.lang)
+                reply_markup = (
+                    barber_main_menu(user.lang)
+                    if user.user_type == "barber"
+                    else client_main_menu(user.lang)
+                )
                 text = "Til o'zgartirildi" if user.lang == "uz" else "Язык изменен"
 
-                # enqueue sync (non-blocking)
-                await _enqueue_user_sync({
-                    "telegram_id": message.from_user.id,
-                    "first_name": message.from_user.first_name,
-                    "last_name": message.from_user.last_name,
-                    "role": role_for_django,
-                    "username": message.from_user.username or str(message.from_user.id),
-                })
-
-                await message.answer(text, reply_markup=reply_markup)
-                return
             else:
+                # CREATE path
                 user = User(
                     telegram_id=message.from_user.id,
                     name=message.from_user.first_name,
                     surname=message.from_user.last_name,
-                    lang=lang_code
+                    lang=lang_code,
                 )
                 session.add(user)
-                client = Client(user_id=user.id)
+                await session.flush()  # <-- ensures user.id is available
+
+                # set relationship (or use user_id=user.id) and safe defaults
+                client = Client(user=user, score=0, blocked=False)
                 session.add(client)
-                await session.commit()
 
-    # greet AFTER the transaction is done
+                reply_markup = client_main_menu(lang_code)
+                text = None  # we'll send welcome text below
     welcome_text = TEXTS[lang_code]["welcome"]
-    text = ("👋 Добро пожаловать!\n\n🔽 Пожалуйста, выберите вашу роль ниже:"
-            if lang_code.startswith("ru")
-            else "👋 Xush kelibsiz!\n\n🔽 Iltimos, quyidan rolingizni tanlang:")
+    if text:
+        await message.answer(text, reply_markup=reply_markup)
+    else:
+        await message.answer(welcome_text, parse_mode="HTML", reply_markup=reply_markup)
 
-    await message.answer(welcome_text, parse_mode="HTML", reply_markup=client_main_menu(user.lang))
-    # await message.answer(text)
-
-    # also sync the newly created user (role will be 'user' until they choose)
+    # enqueue sync AFTER commit
+    role_for_django = "barber" if getattr(user, "user_type", None) == "barber" else "user"
     await _enqueue_user_sync({
         "telegram_id": message.from_user.id,
         "first_name": message.from_user.first_name,
         "last_name": message.from_user.last_name,
-        "role": "user",
+        "role": role_for_django,
         "username": message.from_user.username or str(message.from_user.id),
     })
+
 
 
 ROLE_MAP = {
