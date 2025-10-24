@@ -113,6 +113,9 @@ async def choose_language(message: Message, state: FSMContext):
                     lang=lang_code
                 )
                 session.add(user)
+                client = Client(user_id=user.id)
+                session.add(client)
+                await session.commit()
 
     # greet AFTER the transaction is done
     welcome_text = TEXTS[lang_code]["welcome"]
