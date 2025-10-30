@@ -227,7 +227,6 @@ async def go_back(message: Message, state: FSMContext):
             action = "root"
 
         keyboard = None
-
         if user.user_type == "barber":
             if action in {"show_roles", "waiting_for_username"}:
                 keyboard = user_role_keyboard(lang)

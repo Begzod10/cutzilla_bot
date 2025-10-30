@@ -190,5 +190,6 @@ async def get_or_create_user_and_client(
             role="client",
             client_id=client.id
         )
+        user.user_type = "client"
         await session.commit()
         return user, client
