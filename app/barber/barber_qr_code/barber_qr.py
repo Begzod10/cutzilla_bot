@@ -67,13 +67,13 @@ async def on_generate_qr(message: Message):
     if lang == "uz":
         cap = (
             "✂️ Sizning QR havolangiz tayyor!\n\n"
-            f"🔗 Havola: {deep_link}\n\n"
+            # f"🔗 Havola: {deep_link}\n\n"
             "📌 Mijozlar ushbu QR kodni skaner qilib, profilingizga darhol kirishi mumkin."
         )
     else:
         cap = (
             "✂️ Ваш QR-код готов!\n\n"
-            f"🔗 Ссылка: {deep_link}\n\n"
+            # f"🔗 Ссылка: {deep_link}\n\n"
             "📌 Клиенты могут отсканировать этот QR, чтобы сразу открыть ваш профиль в боте."
         )
 
