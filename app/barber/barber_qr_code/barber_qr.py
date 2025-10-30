@@ -15,6 +15,7 @@ from .security import verify_barber_token
 from aiogram.filters import CommandStart
 from aiogram.filters.command import CommandObject
 from app.client.keyboards import barber_menu
+from app.basic.task_sysnc_user import sync_client_to_django
 
 barber_qr_route = Router()
 
@@ -181,6 +182,13 @@ async def get_or_create_user_and_client(
             except IntegrityError:
                 await session.rollback()
                 client = (await session.execute(select(Client).where(Client.user_id == user.id).limit(1))).scalar_one()
-
+        sync_client_to_django.delay(
+            telegram_id=tg_id,
+            first_name=user.name,
+            last_name=user.surname,
+            lang=normalize_lang(lang_code),
+            role="client",
+            client_id=client.id
+        )
         await session.commit()
         return user, client
