@@ -105,20 +105,43 @@ def barber_info_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
 
     if lang == "ru":
         buttons = [
-            [KeyboardButton(text="📄 Резюме"), KeyboardButton(text="🖼 Фото профиля")],
-            [KeyboardButton(text="📅 Рабочие дни"), KeyboardButton(text="🕒 Время работы")],
-            [KeyboardButton(text="📍 Локация"), KeyboardButton(text="⬅️ Назад")],
+            [
+                KeyboardButton(text="📄 Резюме"),
+                KeyboardButton(text="🖼 Фото профиля"),
+                KeyboardButton(text="📅 Рабочие дни"),
 
+            ],
+            [
+                KeyboardButton(text="🕒 Время работы"),
+                KeyboardButton(text="📍 Локация"),
+                KeyboardButton(text="🧾 Сгенерировать QR"),
+            ],
+            [
+                KeyboardButton(text="⬅️ Назад"),
+            ]
         ]
     else:  # default to Uzbek
         buttons = [
-            [KeyboardButton(text="📄 Rezyume"), KeyboardButton(text="🖼 Profil rasmi")],
-            [KeyboardButton(text="📅 Ish kunlari"), KeyboardButton(text="🕒 Ish vaqti")],
-            [KeyboardButton(text="📍 Manzil"), KeyboardButton(text="⬅️ Orqaga")],
-
+            [
+                KeyboardButton(text="📄 Rezyume"),
+                KeyboardButton(text="🖼 Profil rasmi"),
+                KeyboardButton(text="📅 Ish kunlari"),
+            ],
+            [
+                KeyboardButton(text="🕒 Ish vaqti"),
+                KeyboardButton(text="📍 Manzil"),
+                KeyboardButton(text="🧾 QR kod yaratish"),
+            ],
+            [
+                KeyboardButton(text="⬅️ Orqaga"),
+            ]
         ]
 
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        input_field_placeholder="Tanlang..." if lang == "uz" else "Выберите действие..."
+    )
 
 
 def resume_keyboard(lang: str = "uz") -> ReplyKeyboardMarkup:
