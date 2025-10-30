@@ -14,7 +14,7 @@ class Client(Base):
     blocked: Mapped[bool] = mapped_column(Boolean, nullable=True)
     requests = relationship("ClientRequest", back_populates="client", lazy="selectin")
     scores = relationship("BarberServiceScore", back_populates="client", lazy="selectin")
-    user = relationship("app.user.models.User", back_populates="client", uselist=False)
+    user = relationship("app.user.models.User", back_populates="client", uselist=False, lazy="selectin")
     selected_barber: Mapped[int] = mapped_column(BigInteger, nullable=True)
     selected_schedule_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     selected_request_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
