@@ -228,16 +228,10 @@ async def send_schedule_page(message_or_callback, schedules, page, lang):
 def format_barber_schedule_days(schedules, user_lang: str):
     parts = []
     kb_builder = InlineKeyboardBuilder()
-
+    header = "🗓️ Sartarosh jadvali" if user_lang != "ru" else "🗓️ Sartarosh jadvali"
+    parts.append(header)
     for sched in schedules:
         day_str = sched.day.strftime("%d.%m.%Y") if sched.day else "?"
-        header = (
-            f"📅 {day_str}\n👥 Mijozlar: {sched.n_clients or 0}"
-            if user_lang == "uz"
-            else f"📅 {day_str}\n👥 Клиенты: {sched.n_clients or 0}"
-        )
-        parts.append(header)
-
         # Add button for that day
         kb_builder.button(
             text=day_str,
