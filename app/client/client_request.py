@@ -28,7 +28,6 @@ async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPic
     lang = (await state.get_data()).get("lang", "uz")
     picked_day = callback_data.day  # "YYYY-MM-DD"
     picked_hm = callback_data.hm  # "HHMM" -> e.g., "1530"
-
     # Normalize and store chosen time/day in redis (or state)
     redis = callback.bot.redis
     await redis.set(f"user:{callback.from_user.id}:picked_day", picked_day)
@@ -145,6 +144,7 @@ async def toggle_service_callback(callback: CallbackQuery, state: FSMContext):
 async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     selected_ids = data.get("selected_services", [])
+
     lang = data.get("lang", "uz")
 
     if not selected_ids:

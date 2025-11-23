@@ -45,3 +45,8 @@ class ReqAddSvcPickCB(CallbackData, prefix="rasp"):
 class SchedPickSlotCB(CallbackData, prefix="sp", sep="|"):  # 👈 sep changed
     day: str  # e.g. "2025-01-15"
     hm: str  # keep "08:00"
+
+
+class SchedPickSlotCBForBarber(CallbackData, prefix="spb", sep="|"):  # 👈 sep changed
+    day: str  # e.g. "2025-01-15"
+    hm: str  # keep "08:00"

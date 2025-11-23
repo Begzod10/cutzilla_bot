@@ -148,9 +148,7 @@ async def on_sched_day_by_sid(cb: CallbackQuery, callback_data: DayBySidCB, stat
 
         pct_txt = f" {pct}%" if pct is not None else ""
         header = f"{icon}{pct_txt} {'День' if ru else 'Kun'}: {the_day:%Y-%m-%d}"
-        print('barber_id', barber.id, 'sched_id', sched_id)
         reqs = await fetch_requests_for_schedule(session, barber.id, sched_id)
-        print(reqs)
         if not reqs:
             body = "На этот день заявок нет." if ru else "Bu kunda so‘rovlar yo‘q."
             text = f"{header}\n\n{body}"

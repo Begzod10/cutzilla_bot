@@ -10,7 +10,8 @@ from app.barber.schedule.schedule_utils import _weekday_idx_from_name, _working_
     _ensure_schedules_for_week, UZ_NAMES, RU_NAMES
 from app.barber.utils import _is_ru
 
-from app.barber.schedule.callback_data import SchedPickSlotCB, ReqOpenCB, SchedListCB, ReqAddSvcPickCB, ReqAddSvcCB, ReqStatusCB, \
+from app.barber.schedule.callback_data import SchedPickSlotCBForBarber, ReqOpenCB, SchedListCB, ReqAddSvcPickCB, \
+    ReqAddSvcCB, ReqStatusCB, \
     ReqDiscountCB, DayBySidCB
 from datetime import date
 from sqlalchemy import select
@@ -44,7 +45,6 @@ async def kb_day_slots_by_sched(
         ft, tt = getattr(cr, "from_time", None), getattr(cr, "to_time", None)
         if ft and tt and ft < tt:
             busy.append((ft.time(), tt.time()))
-
     # Build slot buttons
     buttons: List[InlineKeyboardButton] = []
     for (w_start, w_end) in windows:
@@ -58,7 +58,7 @@ async def kb_day_slots_by_sched(
             free = all(not _overlaps(s, e, b1, b2) for (b1, b2) in busy)
             buttons.append(InlineKeyboardButton(
                 text=("🟢 " if free else "🔴 ") + s.strftime("%H:%M"),
-                callback_data=SchedPickSlotCB(
+                callback_data=SchedPickSlotCBForBarber(
                     day=the_day.strftime("%Y-%m-%d"),
                     hm=s.strftime("%H%M"),
                 ).pack() if free else "noop",
