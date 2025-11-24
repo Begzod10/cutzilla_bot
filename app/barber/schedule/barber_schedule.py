@@ -140,7 +140,8 @@ async def on_sched_day_by_sid(cb: CallbackQuery, callback_data: DayBySidCB, stat
         if not sched or sched.barber_id != barber.id or not sched.day:
             await cb.answer("Schedule not found", show_alert=True)
             return
-
+        barber.selected_schedule_id = sched_id
+        await session.commit()
         the_day = sched.day.date()
         ru = (lang or "").startswith("ru")
 

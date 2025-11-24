@@ -33,6 +33,7 @@ class Barber(Base):
                                 order_by="BarberWorkingDays.id")
     scores = relationship("BarberServiceScore", back_populates="barber", lazy="selectin")
     clients = relationship("ClientBarbers", back_populates="barber", lazy="selectin")
+    selected_schedule_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
 
 
 class BarberService(Base):

@@ -24,7 +24,7 @@ class Client(Base):
 class ClientRequest(Base):
     __tablename__ = "client_requests"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"))
+    client_id: Mapped[int] = mapped_column(ForeignKey("client.id"), nullable=True)
     barber_id: Mapped[int] = mapped_column(ForeignKey("barbers.id"))
     date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     from_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

@@ -69,7 +69,7 @@ def service_selection_inline_keyboard(all_services, barber_services, lang: str =
         )
 
     # chunk into rows of 2
-    rows = [buttons[i:i+2] for i in range(0, len(buttons), 2)]
+    rows = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -301,4 +301,55 @@ def kb_requests_paged(selected_day: date, page: int, max_page: int, lang: str) -
     if max_page > 1:
         rows.append([prev_btn, page_btn, next_btn])
     rows.append([back_btn])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def build_barber_services_self_kb(
+        barber_services,
+        lang: str,
+        selected_ids: Optional[List[int]] = None
+) -> InlineKeyboardMarkup:
+    if selected_ids is None:
+        selected_ids = []
+
+    service_buttons: List[InlineKeyboardButton] = []
+    confirm_text = "✅ Confirm"
+
+    for bs in barber_services:
+        service = getattr(bs, "service", None)
+        if not service:
+            continue
+
+        price = getattr(bs, "price", None)
+        duration = getattr(bs, "duration", None)
+
+        if lang == "uz":
+            name = getattr(service, "name_uz", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " so'm") if price else "—"
+            duration_text = (f"{duration} daqiqa") if duration else "—"
+            confirm_text = "✅ Tasdiqlash"
+        else:
+            name = getattr(service, "name_ru", None) or "❓"
+            price_text = (f"{price:,}".replace(",", " ") + " сум") if price else "—"
+            duration_text = (f"{duration} минут") if duration else "—"
+            confirm_text = "✅ Подтвердить"
+
+        prefix = "✅ " if getattr(bs, "id", None) in selected_ids else ""
+        button_text = f"{prefix}{name} • {price_text} • {duration_text}"
+
+        service_buttons.append(
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"choose_service_barber:{bs.id}"
+            )
+        )
+
+    # two-column rows
+    rows: List[List[InlineKeyboardButton]] = [
+        service_buttons[i:i + 2] for i in range(0, len(service_buttons), 2)
+    ]
+
+    # final row with Confirm
+    rows.append([InlineKeyboardButton(text=confirm_text, callback_data="barber_confirm_services")])
+
     return InlineKeyboardMarkup(inline_keyboard=rows)

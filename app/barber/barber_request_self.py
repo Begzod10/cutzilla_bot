@@ -1,25 +1,29 @@
 from aiogram import F, Router
+from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery
 from sqlalchemy import select, or_, and_
+from sqlalchemy.orm import selectinload
 from datetime import datetime, timedelta, time
+from app.states import BookingState, ChangeLocation
 from app.user.models import User
 from app.barber.models import (
-    Barber, BarberService, BarberSchedule
+    Barber, BarberService, BarberSchedule, BarberScheduleDetail
 )
 from app.service.models import Service
 from app.client.models import Client, ClientRequest, ClientRequestService
-from .keyboards import build_barber_services_kb
+from .keyboards import build_barber_services_self_kb
+from app.region.models import Country, Region, City
 
 # your async session factory
 from app.db import AsyncSessionLocal  # ensure this import path is correct
-from .callback_data import SchedPickSlotCBClient
+from app.barber.schedule.callback_data import SchedPickSlotCBForBarber
 
-client_request_router = Router()
+barber_request_router = Router()
 
 
-@client_request_router.callback_query(SchedPickSlotCBClient.filter())
-async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPickSlotCBClient, state: FSMContext):
+@barber_request_router.callback_query(SchedPickSlotCBForBarber.filter())
+async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPickSlotCBForBarber, state: FSMContext):
     lang = (await state.get_data()).get("lang", "uz")
     picked_day = callback_data.day  # "YYYY-MM-DD"
     picked_hm = callback_data.hm  # "HHMM" -> e.g., "1530"
@@ -39,22 +43,17 @@ async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPic
             )
         ).scalar_one_or_none()
 
-        client = (
+        barber = (
             await session.execute(
-                select(Client).where(Client.user_id == (tg_user.id if tg_user else None))
+                select(Barber).where(Barber.user_id == (tg_user.id if tg_user else None))
             )
         ).scalar_one_or_none()
-
-        if not client or not client.selected_barber:
-            msg = "❌ Ustani tanlang." if lang == "uz" else "❌ Выберите барбера."
-            await callback.message.answer(msg)
-            return
 
         barber_services = (
             await session.execute(
                 select(BarberService)
                 .where(
-                    BarberService.barber_id == client.selected_barber,
+                    BarberService.barber_id == barber.id,
                     BarberService.price != 0,
                     BarberService.duration.is_not(None),
                     BarberService.is_active.is_(True),
@@ -68,7 +67,7 @@ async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPic
         await callback.message.answer(msg)
         return
 
-    kb = build_barber_services_kb(barber_services, lang, selected_ids=[])
+    kb = build_barber_services_self_kb(barber_services, lang, selected_ids=[])
     # Header shows selected date/time
     hhmm = f"{picked_hm[:2]}:{picked_hm[2:]}"
     day_human = datetime.strptime(picked_day, "%Y-%m-%d").strftime("%d.%m.%Y")
@@ -87,7 +86,7 @@ async def on_client_slot_picked(callback: CallbackQuery, callback_data: SchedPic
     await callback.answer()
 
 
-@client_request_router.callback_query(F.data.startswith("choose_service_client:"))
+@barber_request_router.callback_query(F.data.startswith("choose_service_barber:"))
 async def toggle_service_callback(callback: CallbackQuery, state: FSMContext):
     service_id = int(callback.data.split(":")[1])
 
@@ -109,33 +108,34 @@ async def toggle_service_callback(callback: CallbackQuery, state: FSMContext):
                 select(User).where(User.telegram_id == callback.from_user.id)
             )
         ).scalar_one_or_none()
-        client = (
+
+        barber = (
             await session.execute(
-                select(Client).where(Client.user_id == (tg_user.id if tg_user else None))
+                select(Barber).where(Barber.user_id == (tg_user.id if tg_user else None))
             )
         ).scalar_one_or_none()
 
         barber_services = []
-        if client and client.selected_barber:
-            barber_services = (
-                await session.execute(
-                    select(BarberService)
-                    .where(
-                        BarberService.barber_id == client.selected_barber,
-                        BarberService.price != 0,
-                        BarberService.duration.is_not(None),
-                    )
-                    .order_by(BarberService.service_id)
-                )
-            ).scalars().all()
 
-    kb = build_barber_services_kb(barber_services, lang, selected_ids)
+        barber_services = (
+            await session.execute(
+                select(BarberService)
+                .where(
+                    BarberService.barber_id == barber.id,
+                    BarberService.price != 0,
+                    BarberService.duration.is_not(None),
+                )
+                .order_by(BarberService.service_id)
+            )
+        ).scalars().all()
+
+    kb = build_barber_services_self_kb(barber_services, lang, selected_ids)
     text = "👇 Xizmatlarni tanlang:" if lang == "uz" else "👇 Выберите услугу:"
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
 
 
-@client_request_router.callback_query(F.data == "confirm_services")
+@barber_request_router.callback_query(F.data == "barber_confirm_services")
 async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     selected_ids = data.get("selected_services", [])
@@ -176,18 +176,9 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer("❌ User not found.")
             return
 
-        client = (
-            await session.execute(
-                select(Client).where(Client.user_id == user.id)
-            )
-        ).scalar_one_or_none()
-        if not client or not client.selected_barber:
-            await callback.message.answer("❌ Barber not selected.")
-            return
-
         barber = (
             await session.execute(
-                select(Barber).where(Barber.id == client.selected_barber)
+                select(Barber).where(Barber.user_id == user.id)
             )
         ).scalar_one_or_none()
         if not barber or not barber.start_time or not barber.end_time:
@@ -198,7 +189,7 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
         # schedule (must match user's last selected schedule)
         barber_schedule = (
             await session.execute(
-                select(BarberSchedule).where(BarberSchedule.id == client.selected_schedule_id)
+                select(BarberSchedule).where(BarberSchedule.id == barber.selected_schedule_id)
             )
         ).scalar_one_or_none()
         if not barber_schedule:
@@ -258,7 +249,7 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 select(ClientRequest).where(
                     ClientRequest.barber_schedule_id == barber_schedule.id,
                     ClientRequest.status != "deny",
-                    ClientRequest.client_id != client.id,
+                    # ClientRequest.client_id != client.id,
                     and_(ClientRequest.from_time < end_dt, ClientRequest.to_time > start_dt)
                 ).limit(1)
             )
@@ -270,7 +261,7 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 await session.execute(
                     select(ClientRequest).where(
                         ClientRequest.barber_schedule_id == barber_schedule.id,
-                        ClientRequest.client_id != client.id
+                        # ClientRequest.client_id != client.id
                     )
                 )
             ).scalars().all()
@@ -295,14 +286,13 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 select(ClientRequest).where(
                     ClientRequest.barber_schedule_id == barber_schedule.id,
                     ClientRequest.barber_id == barber.id,
-                    ClientRequest.client_id == client.id,
+                    # ClientRequest.client_id == client.id,
                     ClientRequest.date >= datetime.combine(day_date, time.min),
                     ClientRequest.date <= datetime.combine(day_date, time.max),
                     ClientRequest.from_time > now,
                 ).limit(1)
             )
         ).scalar_one_or_none()
-
         # if existing_for_today:
         #     text = "⚠️ Siz allaqachon so'rov yubordingiz" if lang == "uz" else "⚠️ Вы уже отправляли заявку"
         #     await callback.message.answer(text)
@@ -311,12 +301,13 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
 
         # Create request
         client_request_add = ClientRequest(
-            client_id=client.id,
+            # client_id=client.id,
             barber_id=barber.id,
             barber_schedule_id=barber_schedule.id,
             date=start_dt,
             from_time=start_dt,
             to_time=end_dt,
+            status="accept",
         )
         session.add(client_request_add)
         await session.flush()
@@ -339,101 +330,6 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 ))
 
         await session.commit()
-        # --- Notify the barber that a new request arrived (UZ/RU) ---
-        # 1) Load barber's user to get telegram_id and language
-        barber_user = (
-            await session.execute(
-                select(User).where(User.id == barber.user_id)
-            )
-        ).scalar_one_or_none()
-
-        client_user = (
-            await session.execute(
-                select(User).where(User.id == client.user_id)
-            )
-        ).scalar_one_or_none()
-
-        # Safety checks
-        if barber_user and getattr(barber_user, "telegram_id", None):
-            # 2) Compose service lines in both languages
-            sv_lines_uz, sv_lines_ru = [], []
-            for s in services:
-                svc = s  # BarberService
-                base = getattr(svc, "service", None)
-                name_uz = base.name_uz if base else "—"
-                name_ru = base.name_ru if base else "—"
-                price = svc.price or 0
-                dur = svc.duration or 0
-                sv_lines_uz.append(f"{name_uz}: {price} so'm, {dur} min")
-                sv_lines_ru.append(f"{name_ru}: {price} сум, {dur} мин")
-
-            services_uz = "\n".join(sv_lines_uz) or "—"
-            services_ru = "\n".join(sv_lines_ru) or "—"
-
-            # 3) Build UZ/RU messages
-            client_fio = f"{client_user.name or ''} {client_user.surname or ''}".strip() if client_user else "—"
-            client_tg_id = getattr(client_user, "telegram_id", None)
-
-            msg_uz = (
-                "🆕 Yangi so'rov!\n"
-                f"👤 Mijoz: {client_fio}\n"
-                f"📆 Sana: {day_date.strftime('%d.%m.%Y')}\n"
-                f"🕒 Vaqt: {start_dt.strftime('%H:%M')} – {end_dt.strftime('%H:%M')}\n"
-                f"🛠️ Xizmatlar:\n{services_uz}\n"
-                f"⏱️ Umumiy davomiylik: {total_duration} min\n"
-                f"💰 Umumiy narx: {total_price} so'm\n"
-                f"💬 Izoh: {client_request_add.comment or '-'}\n\n"
-                "Iltimos, so'rovni tasdiqlang yoki rad eting:"
-            )
-
-            msg_ru = (
-                "🆕 Новая заявка!\n"
-                f"👤 Клиент: {client_fio}\n"
-                f"📆 Дата: {day_date.strftime('%d.%m.%Y')}\n"
-                f"🕒 Время: {start_dt.strftime('%H:%M')} – {end_dt.strftime('%H:%M')}\n"
-                f"🛠️ Услуги:\n{services_ru}\n"
-                f"⏱️ Общая продолжительность: {total_duration} мин\n"
-                f"💰 Общая сумма: {total_price} сум\n"
-                f"💬 Комментарий: {client_request_add.comment or '-'}\n\n"
-                "Пожалуйста, подтвердите или отклоните заявку:"
-            )
-
-            # 4) Choose barber language (default UZ)
-            barber_lang = getattr(barber_user, "lang", "uz") or "uz"
-            msg_for_barber = msg_ru if barber_lang == "ru" else msg_uz
-
-            # 5) Inline keyboard: Accept / Deny (+ link to client's Telegram)
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-            accept_text = "✅ Подтвердить" if barber_lang == "ru" else "✅ Tasdiqlash"
-            deny_text = "❌ Отклонить" if barber_lang == "ru" else "❌ Rad etish"
-            view_client_text = "👤 Профиль клиента" if barber_lang == "ru" else "👤 Mijoz profili"
-
-            kb_rows = [[
-                InlineKeyboardButton(text=accept_text, callback_data=f"req:{client_request_add.id}:accept"),
-                InlineKeyboardButton(text=deny_text, callback_data=f"req:{client_request_add.id}:deny"),
-            ]]
-
-            # Optional: deep link to client's Telegram profile if we have their telegram_id
-            if client_tg_id:
-                kb_rows.append([
-                    InlineKeyboardButton(text=view_client_text, url=f"tg://user?id={client_tg_id}")
-                ])
-
-            barber_kb = InlineKeyboardMarkup(inline_keyboard=kb_rows)
-
-            # 6) Send the message to the barber
-            try:
-                await callback.bot.send_message(
-                    chat_id=barber_user.telegram_id,
-                    text=msg_for_barber,
-                    reply_markup=barber_kb
-                )
-            except Exception as e:
-                # You might want to log this
-                print("Failed to notify barber:", e)
-
-    # Feedback
     msg = (
         f"✅ Siz tanlagan vaqt: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}.\n"
         f"🕒 Umumiy davomiylik: {total_duration} daqiqa\n"

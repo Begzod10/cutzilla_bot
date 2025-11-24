@@ -23,6 +23,7 @@ from app.barber.barber_requests import barber_requests
 from app.barber.schedule.barber_schedule import barber_schedule
 from app.barber.barber_scores import barber_scores
 from app.barber.barber_qr_code.barber_qr import barber_qr_route
+from app.barber.barber_request_self import barber_request_router
 
 # Client
 from app.client.client_location import client_basic
@@ -77,6 +78,7 @@ async def main():
     dp.include_router(barber_requests)
     dp.include_router(barber_schedule)
     dp.include_router(barber_scores)
+    dp.include_router(barber_request_router)
 
     dp.include_router(client_basic)
     dp.include_router(client_barber_selection)
