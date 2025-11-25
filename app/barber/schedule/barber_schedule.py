@@ -287,15 +287,7 @@ async def on_req_status(cb: CallbackQuery, callback_data: ReqStatusCB, state: FS
             )
             return
 
-        # ✅ Check if already processed
-        if cr.status != "pending":
-            msg = (
-                f"⚠️ Этот запрос уже {cr.status}"
-                if ru
-                else f"⚠️ Bu so'rov allaqachon {cr.status} holatida"
-            )
-            await cb.answer(msg, show_alert=True)
-            return
+
 
         # Find the effective day to compare with "today"
         sched = await session.get(BarberSchedule, sched_id)

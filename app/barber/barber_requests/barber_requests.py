@@ -124,14 +124,6 @@ async def handle_request_action(call: CallbackQuery):
             await call.answer("❌ So'rov topilmadi.", show_alert=True)
             return
 
-        # ✅ Check if already processed
-        if cr.status != "pending":
-            await call.answer(
-                f"⚠️ Bu so'rov allaqachon {cr.status} holatida.",
-                show_alert=True
-            )
-            return
-
         if action == "accept":
             # ✅ Check for time conflicts BEFORE accepting
             if cr.from_time and cr.to_time:
