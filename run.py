@@ -19,7 +19,7 @@ from app.barber.barber_service import barber_service
 from app.barber.working_time import barber_working_time
 from app.barber.barber_location import barber_location
 from app.barber.working_days import barber_working_days_route
-from app.barber.barber_requests import barber_requests
+from app.barber.barber_requests.barber_requests import barber_requests
 from app.barber.schedule.barber_schedule import barber_schedule
 from app.barber.barber_scores import barber_scores
 from app.barber.barber_qr_code.barber_qr import barber_qr_route

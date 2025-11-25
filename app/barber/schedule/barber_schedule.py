@@ -1,12 +1,15 @@
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-
+from sqlalchemy.orm import selectinload
 from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
 )
+from sqlalchemy import and_, or_, func, cast, Date, select
+from app.client.models import ClientRequest
+from app.barber.barber_requests.utils import recalc_schedule_stats
 from datetime import timedelta, datetime
 from app.barber.schedule.callback_data import (
     SchedListCB,
@@ -18,7 +21,7 @@ from app.barber.schedule.callback_data import (
     ReqAddSvcCB
 )
 from app.states import EditReqStates
-from sqlalchemy import select
+from app.barber.barber_requests.utils import check_time_conflict
 
 from app.barber.models import BarberService, BarberSchedule
 from app.client.models import ClientRequestService
@@ -253,16 +256,54 @@ async def on_req_status(cb: CallbackQuery, callback_data: ReqStatusCB, state: FS
 
         ru = _is_ru(lang)
 
-        # Load fully-eager request (avoid lazy loads later)
-        cr = await load_request_full(session, barber.id, req_id)
-        if not cr or cr.barber_id != barber.id:
-            await cb.answer("Request not found", show_alert=True)
+        # 🔒 Load request with row-level lock to prevent concurrent modifications
+        stmt = (
+            select(ClientRequest)
+            .where(
+                and_(
+                    ClientRequest.id == req_id,
+                    ClientRequest.barber_id == barber.id
+                )
+            )
+            .options(
+                selectinload(ClientRequest.services)
+                .selectinload(ClientRequestService.barber_service)
+                .selectinload(BarberService.service),
+                selectinload(ClientRequest.client),
+                selectinload(ClientRequest.barber),
+                selectinload(ClientRequest.scores),
+                selectinload(ClientRequest.schedule_details),
+            )
+            .with_for_update()  # ✅ Lock the row
+        )
+
+        result = await session.execute(stmt)
+        cr = result.scalar_one_or_none()
+
+        if not cr:
+            await cb.answer(
+                "Запрос не найден" if ru else "So'rov topilmadi",
+                show_alert=True
+            )
+            return
+
+        # ✅ Check if already processed
+        if cr.status != "pending":
+            msg = (
+                f"⚠️ Этот запрос уже {cr.status}"
+                if ru
+                else f"⚠️ Bu so'rov allaqachon {cr.status} holatida"
+            )
+            await cb.answer(msg, show_alert=True)
             return
 
         # Find the effective day to compare with "today"
         sched = await session.get(BarberSchedule, sched_id)
         if sched and sched.barber_id != barber.id:
-            await cb.answer("Schedule not found", show_alert=True)
+            await cb.answer(
+                "График не найден" if ru else "Jadval topilmadi",
+                show_alert=True
+            )
             return
 
         if sched and sched.day:
@@ -276,30 +317,60 @@ async def on_req_status(cb: CallbackQuery, callback_data: ReqStatusCB, state: FS
 
         today = datetime.now().date()
         if eff_day and eff_day < today:
-            msg = "Нельзя менять статус для прошедшего дня." if ru else "O‘tgan kun uchun holatni o‘zgartirib bo‘lmaydi."
+            msg = (
+                "Нельзя менять статус для прошедшего дня."
+                if ru
+                else "O'tgan kun uchun holatni o'zgartirib bo'lmaydi."
+            )
             await cb.answer(msg, show_alert=True)
             return
 
+        # ✅ Check for time conflicts BEFORE accepting
+        if action == "accept":
+            if cr.from_time and cr.to_time:
+                has_conflict = await check_time_conflict(
+                    session,
+                    barber.id,
+                    cr.from_time,
+                    cr.to_time,
+                    exclude_request_id=req_id
+                )
+
+                if has_conflict:
+                    msg = (
+                        "❌ Это время уже занято! Другой запрос уже принят."
+                        if ru
+                        else "❌ Bu vaqt oralig'i band! Boshqa so'rov allaqachon qabul qilingan."
+                    )
+                    await cb.answer(msg, show_alert=True)
+                    return
+
         # Update status
-        cr.status = "accept" if action == "accept" else "pending"
+        cr.status = "accept" if action == "accept" else "deny"
         await session.flush()
 
         # Recompute schedule aggregates and commit
-        await recompute_schedule_totals(session, barber.id, sched_id)
+        await recalc_schedule_stats(session, sched_id)
         await session.commit()
 
-        # Reload for rendering (fully eager)
-        # cr = await load_request_full(session, barber.id, req_id)
+        # Reload cr to ensure all relationships are fresh after commit
+        await session.refresh(cr)
+
+        # Render updated view
         text = "🧾 " + render_request_block(cr, lang)
         kb = kb_request_manage(cr.id, sched_id, lang, getattr(cr, "status", None), page)
 
-    toast = ("Принято" if action == "accept" else "Отклонено") if ru else (
-        "Qabul qilindi" if action == "accept" else "Rad etildi")
+    toast = (
+        ("Принято" if action == "accept" else "Отклонено")
+        if ru
+        else ("Qabul qilindi" if action == "accept" else "Rad etildi")
+    )
 
     try:
         await cb.message.edit_text(text, reply_markup=kb)
     except Exception:
         await cb.message.answer(text, reply_markup=kb)
+
     await cb.answer(toast)
 
 
@@ -393,7 +464,7 @@ async def on_discount_input(message: Message, state: FSMContext):
 
         text = "🧾 " + render_request_block(cr, lang)
         kb = kb_request_manage(cr.id, sched_id, lang, getattr(cr, "status", None), page=1)
-        await recompute_schedule_totals(session, barber.id, sched_id)
+        await recalc_schedule_stats(session, barber.id)
         await session.commit()
 
     await state.clear()
@@ -522,8 +593,7 @@ async def on_req_addsvc_pick(cb: CallbackQuery, callback_data: ReqAddSvcPickCB, 
             if total_minutes == 0:
                 cr.to_time = None
 
-        # Recompute schedule totals (prices/discounts etc.) AFTER time updates
-        await recompute_schedule_totals(session, barber.id, sched_id)
+        await recalc_schedule_stats(session, sched_id)
 
         await session.commit()
 

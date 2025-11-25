@@ -1,22 +1,21 @@
 from aiogram import F, Router
-from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
-from sqlalchemy import select, or_, and_
-from sqlalchemy.orm import selectinload
+from aiogram.types import CallbackQuery
+from sqlalchemy import select, and_
+
 from datetime import datetime, timedelta, time
-from app.states import BookingState, ChangeLocation
+
 from app.user.models import User
 from app.barber.models import (
-    Barber, BarberService, BarberSchedule, BarberScheduleDetail
+    Barber, BarberService, BarberSchedule
 )
-from app.service.models import Service
-from app.client.models import Client, ClientRequest, ClientRequestService
-from .keyboards import build_barber_services_self_kb
-from app.region.models import Country, Region, City
 
-# your async session factory
-from app.db import AsyncSessionLocal  # ensure this import path is correct
+from app.client.models import ClientRequest, ClientRequestService
+from .keyboards import build_barber_services_self_kb
+
+from app.barber.barber_requests.utils import recalc_schedule_stats
+
+from app.db import AsyncSessionLocal
 from app.barber.schedule.callback_data import SchedPickSlotCBForBarber
 
 barber_request_router = Router()
@@ -261,6 +260,7 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 await session.execute(
                     select(ClientRequest).where(
                         ClientRequest.barber_schedule_id == barber_schedule.id,
+
                         # ClientRequest.client_id != client.id
                     )
                 )
@@ -330,16 +330,17 @@ async def confirm_services_callback(callback: CallbackQuery, state: FSMContext):
                 ))
 
         await session.commit()
+        await recalc_schedule_stats(session, barber_schedule.id)
     msg = (
         f"✅ Siz tanlagan vaqt: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}.\n"
         f"🕒 Umumiy davomiylik: {total_duration} daqiqa\n"
         f"💰 Umumiy narx: {total_price} so'm\n"
-        f"Arizangiz qabul qilinishini kuting."
+        f"Ariza qabul qilindi."
         if lang == "uz"
         else f"✅ Вы выбрали время: {start_dt.strftime('%H:%M')} - {end_dt.strftime('%H:%M')}.\n"
              f"🕒 Общая продолжительность: {total_duration} мин.\n"
              f"💰 Общая сумма: {total_price} сум\n"
-             f"Ожидайте подтверждения заявки."
+             f"Заявка принята."
     )
     await callback.message.answer(msg)
 

@@ -1,27 +1,23 @@
-from datetime import date, datetime, time
-from typing import Optional
-
-from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, CallbackQuery
 from sqlalchemy import and_, or_, func, cast, Date, select
+from datetime import date
+from typing import Optional
+from aiogram.types import Message, CallbackQuery
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy import and_, or_, func, cast, Date
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import distinct
 from app.barber.models import Barber, BarberService, BarberSchedule
 from app.client.models import Client, ClientRequest, ClientRequestService
 from app.db import AsyncSessionLocal  # ← ensure correct import path
 from app.user.models import User
-from .keyboards import (
+from app.barber.keyboards import (
     request_row_kb,
     build_profile_button
 
 )
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
 
-barber_requests = Router()
-
-PAGE_SIZE = 5
+PAGE_SIZE = 6
 
 
 def _status_title(status: str, lang: str) -> str:
@@ -373,133 +369,46 @@ async def recalc_schedule_stats(session: AsyncSessionLocal, schedule_id: int) ->
         await session.commit()
 
 
-@barber_requests.message(F.text.in_(['📨 So‘rovlar', '📨 Запросы']))
-async def requests_list(message: Message, state: FSMContext):
-    telegram_id = message.from_user.id
-    async with AsyncSessionLocal() as session:
-        user: Optional[User] = (
-            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
-        if not user:
-            await message.answer(_t("user_not_found", "uz"))
-            return
-        lang = getattr(user, "lang", "uz") or "uz"
-        barber: Optional[Barber] = (
-            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
-        ).scalar_one_or_none()
-        if not barber:
-            await message.answer(_t("barber_not_found", lang))
-            return
-
-    # show PENDING page 1 (it will append cards below header)
-    await _send_requests_page(message, barber.id, lang, status="pending", page=1, page_size=PAGE_SIZE)
-
-
-@barber_requests.callback_query(F.data.startswith("reqflt:"))
-async def switch_filter_tab(cb: CallbackQuery):
-    try:
-        _, status, page_str = cb.data.split(":")
-        page = int(page_str)
-    except Exception:
-        await cb.answer("Bad filter", show_alert=True)
-        return
-
-    telegram_id = cb.from_user.id
-    async with AsyncSessionLocal() as session:
-        user: Optional[User] = (
-            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
-        if not user:
-            await cb.answer(_t("user_not_found", "uz"), show_alert=True)
-            return
-        lang = getattr(user, "lang", "uz") or "uz"
-        barber: Optional[Barber] = (
-            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
-        ).scalar_one_or_none()
-        if not barber:
-            await cb.answer(_t("barber_not_found", lang), show_alert=True)
-            return
-
-    # Append the new page below; keep existing messages (so "new data" is added, not replaced)
-    await _send_requests_page(cb.message, barber.id, lang, status=status, page=page, page_size=PAGE_SIZE)
-    await cb.answer()
-
-
-# ----- Inline callbacks: pagination -----
-@barber_requests.callback_query(F.data.startswith("reqpage:"))
-async def paginate_requests(cb: CallbackQuery):
-    try:
-        _, status, page_str = cb.data.split(":")
-        page = int(page_str)
-    except Exception:
-        await cb.answer("Bad page", show_alert=True)
-        return
-
-    telegram_id = cb.from_user.id
-    async with AsyncSessionLocal() as session:
-        user: Optional[User] = (
-            await session.execute(select(User).where(User.telegram_id == telegram_id))).scalar_one_or_none()
-        if not user:
-            await cb.answer(_t("user_not_found", "uz"), show_alert=True)
-            return
-        lang = getattr(user, "lang", "uz") or "uz"
-        barber: Optional[Barber] = (
-            await session.execute(select(Barber).where(Barber.user_id == user.id, Barber.login == user.platform_login))
-        ).scalar_one_or_none()
-        if not barber:
-            await cb.answer(_t("barber_not_found", lang), show_alert=True)
-            return
-
-    # As with filter switch, just append the requested page
-    await _send_requests_page(cb.message, barber.id, lang, status=status, page=page, page_size=PAGE_SIZE)
-    await cb.answer()
-
-
-@barber_requests.callback_query(F.data.startswith("req:"))
-async def handle_request_action(call: CallbackQuery):
-    try:
-        _, req_id_str, action = call.data.split(":")
-        req_id = int(req_id_str)
-    except Exception:
-        await call.answer("❌ Noto‘g‘ri amal ma’lumoti.", show_alert=True)
-        return
-
-    async with AsyncSessionLocal() as session:  # type: AsyncSession
-        cr = await session.get(
-            ClientRequest, req_id,
-            options=[
-                selectinload(ClientRequest.services)
-                .selectinload(ClientRequestService.barber_service)
-                .selectinload(BarberService.service),
-                selectinload(ClientRequest.client),
-            ]
+async def check_time_conflict(
+        session: AsyncSessionLocal,
+        barber_id: int,
+        from_time: datetime,
+        to_time: datetime,
+        exclude_request_id: int = None
+) -> bool:
+    """
+    Check if there's any accepted request that overlaps with the given time range.
+    Returns True if conflict exists, False otherwise.
+    """
+    query = select(ClientRequest).where(
+        and_(
+            ClientRequest.barber_id == barber_id,
+            ClientRequest.status == "accept",
+            # Check for time overlap: new request overlaps with existing ones
+            or_(
+                # New request starts during existing booking
+                and_(
+                    ClientRequest.from_time <= from_time,
+                    ClientRequest.to_time > from_time
+                ),
+                # New request ends during existing booking
+                and_(
+                    ClientRequest.from_time < to_time,
+                    ClientRequest.to_time >= to_time
+                ),
+                # New request completely contains existing booking
+                and_(
+                    ClientRequest.from_time >= from_time,
+                    ClientRequest.to_time <= to_time
+                )
+            )
         )
-        if not cr:
-            await call.answer("❌ So‘rov topilmadi.", show_alert=True)
-            return
-        cr.status = action
-        await session.commit()
-        if action == "accept":
-            # Recalculate schedule totals
-            if cr.barber_schedule_id:
-                await recalc_schedule_stats(session, cr.barber_schedule_id)
-            try:
-                await call.message.edit_reply_markup()
-            except Exception:
-                pass
-            await call.answer("✅ Qabul qilindi.", show_alert=False)
-            await call.message.answer(f"✅ So‘rov qabul qilindi .")
-            await _notify_client_about_request(call.bot, session, cr)
-        elif action == "deny":
-            # Recalculate schedule totals too (denial may reduce totals)
-            if cr.barber_schedule_id:
-                await recalc_schedule_stats(session, cr.barber_schedule_id)
+    )
 
-            try:
-                await call.message.edit_reply_markup()
-            except Exception:
-                pass
+    if exclude_request_id:
+        query = query.where(ClientRequest.id != exclude_request_id)
 
-            await call.answer("❌ Rad etildi.", show_alert=False)
-            await call.message.answer(f"❌ So‘rov rad etildi .")
-            await _notify_client_about_request(call.bot, session, cr)
-        else:
-            await call.answer("❌ Noto‘g‘ri amal.", show_alert=True)
+    result = await session.execute(query)
+    conflict = result.scalars().first()
+
+    return conflict is not None
