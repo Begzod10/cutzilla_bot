@@ -138,7 +138,7 @@ async def kb_week_days(
         pct_txt = f" {pct}%" if pct is not None else ""
 
         idx = d.weekday()
-        btn_text = f"{icon}{pct_txt} {names[idx]} • {d:%Y-%m-%d} • 👥{n_clients} • 💰{_fmt_money(income)}"
+        btn_text = f"{icon}{pct_txt} {d:%Y-%m-%d} • 👥{n_clients} • 💰{_fmt_money(income)}"
         kb_rows.append([InlineKeyboardButton(
             text=btn_text,
             callback_data=DayBySidCB(sid=sid).pack()
