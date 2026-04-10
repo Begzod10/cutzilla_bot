@@ -1,0 +1,70 @@
+# --- Python bytecode & caches ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# --- Environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Editor/IDE ---
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Secrets & local config ---
+.env
+*.env
+.env.*.local
+
+# --- Builds / dist / wheels ---
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Test / tooling caches ---
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.cache/
+
+# --- Logs & run files ---
+logs/
+*.log
+celerybeat-schedule*
+celerybeat.pid
+
+# --- Static & media (if generated locally) ---
+staticfiles/
+static_collected/
+media/
+# keep your committed /static if it's source; ignore generated dirs above
+
+# --- SQLAlchemy / Alembic ---
+# Keep migration scripts! Only ignore Alembic cache or local artifacts if any.
+alembic.ini
+# If you have local revision autogenerate junk, add it here (rare).
+
+# --- Databases (local dev) ---
+*.sqlite3
+*.db
+
+# --- Byte-compiled notebooks / checkpoints ---
+.ipynb_checkpoints/
+
+# --- Node (if you have a frontend here) ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
