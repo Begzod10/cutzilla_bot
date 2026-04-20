@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from sqladmin import Admin
-from src.core.database import engine
+from src.core.database import engine, get_db
 from src.admin import admin_views
 from src.core.config import settings
+from src.models.settings import SystemSetting
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import os
@@ -44,6 +47,22 @@ app.include_router(user_router, prefix="/api/v1/user", tags=["User"])
 frontend_dist = os.path.join(os.getcwd(), "mini-app", "dist")
 if os.path.exists(frontend_dist):
     app.mount("/mini-app", StaticFiles(directory=frontend_dist, html=True), name="mini-app")
+
+@app.on_event("startup")
+async def startup_event():
+    # Initialize referral percentage if not exists
+    from sqlalchemy.ext.asyncio import AsyncSession
+    async with AsyncSession(engine) as session:
+        result = await session.execute(select(SystemSetting).where(SystemSetting.key == "referral_percentage"))
+        setting = result.scalar_one_or_none()
+        if not setting:
+            new_setting = SystemSetting(
+                key="referral_percentage",
+                value="10",
+                description="Referral reward percentage (e.g. 10 for 10%)"
+            )
+            session.add(new_setting)
+            await session.commit()
 
 @app.get("/")
 async def root():

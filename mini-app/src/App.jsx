@@ -5,10 +5,11 @@ import axios from 'axios';
 const API_BASE_URL = '/api/v1'; // Served from the same host
 
 function App() {
-  const [view, setView] = useState('list'); // 'list', 'profile', 'booking', 'success'
+  const [view, setView] = useState('list'); // 'list', 'profile', 'booking', 'success', 'referral'
   const [barbers, setBarbers] = useState([]);
   const [selectedBarber, setSelectedBarber] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     // Initialize Telegram Web App
@@ -24,19 +25,52 @@ function App() {
   const fetchBarbers = async () => {
     try {
       const response = await axios.get(`${API_BASE_URL}/barber/`);
-      setBarbers(response.data);
+      const data = response.data;
+      setBarbers(data);
+      
+      // Feature: Single Barber Mode
+      if (data.length === 1) {
+        setSelectedBarber(data[0]);
+        setView('profile');
+      }
     } catch (error) {
       console.error("Error fetching barbers:", error);
       // Fallback data for demo
-      setBarbers([
+      const fallback = [
         { id: 1, full_name: "Azamat Sobirov", bio: "Yuqori sifatli erkaklar soch turmagi", rating: 4.9, location: "Toshkent, Chilonzor" },
         { id: 2, full_name: "Rustam Karimov", bio: "Soqol va soch bo'yicha mutaxassis", rating: 4.8, location: "Toshkent, Yunusobod" },
         { id: 3, full_name: "Javohir Ortiqov", bio: "Klassik va zamonaviy uslublar", rating: 5.0, location: "Toshkent, Mirobod" }
-      ]);
+      ];
+      setBarbers(fallback);
     } finally {
       setLoading(false);
     }
   };
+
+  const syncUser = async () => {
+    const tg = window.Telegram?.WebApp;
+    if (tg?.initDataUnsafe?.user) {
+      const tgUser = tg.initDataUnsafe.user;
+      try {
+        const response = await axios.post(`${API_BASE_URL}/client/sync`, {
+          telegram_id: tgUser.id,
+          first_name: tgUser.first_name,
+          last_name: tgUser.last_name,
+          username: tgUser.username,
+          referred_by_id: tg.initDataUnsafe.start_param ? parseInt(tg.initDataUnsafe.start_param.replace('ref', '')) : null
+        });
+        // Fetch user data to get balance
+        const userResponse = await axios.get(`${API_BASE_URL}/user/${response.data.id}`);
+        setUser(userResponse.data);
+      } catch (err) {
+        console.error("Sync error:", err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    syncUser();
+  }, []);
 
   const openProfile = (barber) => {
     setSelectedBarber(barber);
@@ -56,8 +90,16 @@ function App() {
   if (view === 'list') {
     return (
       <div className="app-container">
-        <header className="header">
+        <header className="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h1>Cutzilla</h1>
+          <button 
+            onClick={() => setView('referral')}
+            style={{ background: '#F5F5F7', border: 'none', borderRadius: '50%', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <User size={20} color="#007AFF" />
+          </button>
+        </header>
+        <header className="header" style={{ paddingTop: 0 }}>
           <div style={{ marginTop: '15px', position: 'relative' }}>
             <Search size={20} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#86868B' }} />
             <input 
@@ -210,11 +252,61 @@ function App() {
         </div>
         <h2 style={{ fontSize: '28px', marginBottom: '10px' }}>Muvaffaqiyatli!</h2>
         <p style={{ color: '#86868B', fontSize: '17px', lineHeight: '1.5' }}>
-          Siz {selectedBarber.full_name} qabuliga muvaffaqiyatli yozildingiz.
+          Siz {selectedBarber?.full_name} qabuliga muvaffaqiyatli yozildingiz.
           <br />Tasdiqlash xabari bot orqali yuboriladi.
         </p>
         <div style={{ width: '100%', marginTop: '40px' }}>
-          <button className="btn-primary" onClick={() => setView('list')}>Asosiy menyuga qaytish</button>
+          <button className="btn-primary" onClick={() => setView(barbers.length === 1 ? 'profile' : 'list')}>Asosiy menyuga qaytish</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'referral') {
+    const referralLink = `https://t.me/CutzillaBot?start=ref${user?.telegram_id || ''}`;
+    
+    const shareReferral = () => {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent("Do'stim, yanada chiroyli bo'lishing uchun ushbu sartaroshni tavsiya qilaman! Ro'yxatdan o't va chegirmalarga ega bo'l.")}`);
+      } else {
+        navigator.clipboard.writeText(referralLink);
+        alert("Havola nusxalandi!");
+      }
+    };
+
+    return (
+      <div className="app-container">
+        <header className="header" style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+           <button 
+            onClick={() => setView(barbers.length === 1 ? 'profile' : 'list')}
+            style={{ background: 'none', border: 'none', color: '#007AFF', padding: 0 }}
+          >
+            <ChevronRight size={24} style={{ transform: 'rotate(180deg)' }} />
+          </button>
+          <h1 style={{ fontSize: '20px' }}>Shaxsiy kabinet</h1>
+        </header>
+
+        <div style={{ padding: '20px' }}>
+          <div style={{ background: 'linear-gradient(135deg, #007AFF 0%, #0056B3 100%)', borderRadius: '24px', padding: '25px', color: 'white', marginBottom: '30px' }}>
+            <div style={{ fontSize: '15px', opacity: 0.8 }}>Sizning balansingiz</div>
+            <div style={{ fontSize: '32px', fontWeight: '700', marginTop: '5px' }}>{user?.balance || 0} <span style={{ fontSize: '18px', fontWeight: '400' }}>so'm</span></div>
+          </div>
+
+          <div style={{ background: '#F5F5F7', borderRadius: '24px', padding: '25px', textAlign: 'center' }}>
+             <Star size={40} color="#FF9500" style={{ marginBottom: '15px' }} />
+             <h3 style={{ fontSize: '20px', fontWeight: '600' }}>Do'stlaringizni taklif qiling</h3>
+             <p style={{ color: '#86868B', marginTop: '10px', lineHeight: '1.5' }}>
+               Har bir taklif qilingan do'stingizning birinchi tashrifidan so'ng sizga xizmat haqining bir qismi bonus sifatida beriladi!
+             </p>
+             <button 
+              className="btn-primary" 
+              style={{ marginTop: '20px' }}
+              onClick={shareReferral}
+             >
+               Havolani ulashish
+             </button>
+          </div>
         </div>
       </div>
     );

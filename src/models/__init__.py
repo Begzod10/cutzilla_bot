@@ -4,5 +4,6 @@ from src.models.barber import Barber, BarberService, BarberSchedule, BarberSched
 from src.models.client import Client, ClientRequest, ClientRequestService, ClientFavouriteBarbers
 from src.models.service import Service, ServiceImage
 from src.models.region import Country, Region, City
+from src.models.settings import SystemSetting
 
 # This guarantees all models are loaded before Alembic metadata is grabbed

@@ -24,3 +24,7 @@ class SyncClientSchema(BaseModel):
     role: Optional[str] = "client"
     lang: Optional[str] = "uz"
     client_id: Optional[int] = None
+    referred_by_id: Optional[int] = None
+
+class ClientRequestStatusUpdate(BaseModel):
+    status: str

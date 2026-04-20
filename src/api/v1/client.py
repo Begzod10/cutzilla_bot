@@ -4,10 +4,11 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from typing import List
 from src.core.database import get_db
-from src.models.client import Client
+from src.models.client import Client, ClientRequest
 from src.models.users import User
-from src.schemas.client import ClientResponse, SyncClientSchema
+from src.schemas.client import ClientResponse, SyncClientSchema, ClientRequestStatusUpdate
 from src.core.security import get_password_hash
+from src.core.referral import award_referral_bonus
 
 router = APIRouter()
 
@@ -27,13 +28,21 @@ async def sync_client_view(data: SyncClientSchema, db: AsyncSession = Depends(ge
     user_created = False
     if not user:
         try:
+            referred_user_id = None
+            if data.referred_by_id:
+                # Find the referrer by their telegram_id
+                stmt = select(User.id).where(User.telegram_id == data.referred_by_id)
+                ref_result = await db.execute(stmt)
+                referred_user_id = ref_result.scalar_one_or_none()
+
             new_user = User(
                 telegram_id=data.telegram_id,
                 username=username,
                 first_name=data.first_name,
                 last_name=data.last_name,
                 role=data.role,
-                password=get_password_hash("12345678")
+                password=get_password_hash("12345678"),
+                referred_by_id=referred_user_id
             )
             db.add(new_user)
             await db.commit()
@@ -78,3 +87,14 @@ async def sync_client_view(data: SyncClientSchema, db: AsyncSession = Depends(ge
             await db.rollback()
 
     return {"id": user.id, "created": user_created or client_created}
+
+@router.patch("/request/{request_id}/status")
+async def update_request_status(request_id: int, data: ClientRequestStatusUpdate, db: AsyncSession = Depends(get_db)):
+    stmt = update(ClientRequest).where(ClientRequest.id == request_id).values(status=data.status)
+    await db.execute(stmt)
+    await db.commit()
+    
+    if data.status == "done":
+        await award_referral_bonus(db, request_id)
+        
+    return {"status": "success"}

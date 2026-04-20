@@ -25,6 +25,10 @@ class Barber(BaseModel):
     selected_service = Column(BigInteger, nullable=True)
     selected_schedule_id = Column(BigInteger, nullable=True)
 
+    loyalty_reward_type = Column(String(20), default='none') # 'percentage', 'free', 'none'
+    loyalty_reward_value = Column(Integer, default=0) # percentage value
+    total_clients_served = Column(Integer, default=0)
+
     user = relationship("User", back_populates="barber")
     barber_services = relationship("BarberService", back_populates="barber")
     client_requests = relationship("ClientRequest", back_populates="barber", foreign_keys="[ClientRequest.barber_id]")

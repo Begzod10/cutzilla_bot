@@ -2,16 +2,17 @@ from sqladmin import ModelView
 from src.models import (
     User, Barber, BarberService, BarberSchedule, BarberScheduleDetail, BarberServiceScore,
     Client, ClientRequest, ClientRequestService, ClientFavouriteBarbers,
-    Service, ServiceImage, Country, Region, City
+    Service, ServiceImage, Country, Region, City, SystemSetting
 )
 
 class UserAdmin(ModelView, model=User):
-    column_list = [User.id, User.username, User.name, User.role, User.city_id, User.is_active]
-    form_columns = [User.username, User.name, User.surname, User.role, User.city_id, User.region_id, User.is_active, User.telegram_id]
+    column_list = [User.id, User.username, User.name, User.role, User.balance, User.is_active]
+    form_columns = [User.username, User.name, User.surname, User.role, User.balance, User.referred_by_id, User.city_id, User.region_id, User.is_active, User.telegram_id]
     icon = "fa-solid fa-user"
 
 class BarberAdmin(ModelView, model=Barber):
-    column_list = [Barber.id, Barber.user, Barber.per_hour, Barber.score]
+    column_list = [Barber.id, Barber.user, Barber.per_hour, Barber.score, Barber.total_clients_served]
+    form_columns = [Barber.user, Barber.per_hour, Barber.start_time, Barber.end_time, Barber.img, Barber.loyalty_reward_type, Barber.loyalty_reward_value, Barber.total_clients_served]
     icon = "fa-solid fa-scissors"
 
 class BarberServiceAdmin(ModelView, model=BarberService):
@@ -41,8 +42,13 @@ class RegionAdmin(ModelView, model=Region):
 class CityAdmin(ModelView, model=City):
     column_list = [City.id, City.name_uz, City.region_id]
 
+class SystemSettingAdmin(ModelView, model=SystemSetting):
+    column_list = [SystemSetting.key, SystemSetting.value, SystemSetting.description]
+    icon = "fa-solid fa-gear"
+
 # List to register all admins in main.py
 admin_views = [
     UserAdmin, BarberAdmin, BarberServiceAdmin, BarberScheduleAdmin, 
-    ClientAdmin, ClientRequestAdmin, ServiceAdmin, CountryAdmin, RegionAdmin, CityAdmin
+    ClientAdmin, ClientRequestAdmin, ServiceAdmin, CountryAdmin, RegionAdmin, CityAdmin,
+    SystemSettingAdmin
 ]

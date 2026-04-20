@@ -20,6 +20,8 @@ class User(BaseModel):
     
     role = Column(String(20), default='user')
     telegram_id = Column(BigInteger, unique=True, nullable=True)
+    referred_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    balance = Column(BigInteger, default=0) # In Som
 
     name = Column(String(150), nullable=True)
     surname = Column(String(150), nullable=True)
@@ -33,6 +35,8 @@ class User(BaseModel):
 
     barber = relationship("Barber", back_populates="user", uselist=False)
     client = relationship("Client", back_populates="user", uselist=False)
+    
+    referred_by = relationship("User", remote_side=[id], backref="referrals")
 
     def __str__(self):
         return f"{self.name or self.username or self.id}"
