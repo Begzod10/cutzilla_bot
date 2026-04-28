@@ -68,3 +68,8 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 .pnpm-store/
+
+# --- Redis & Binaries ---
+redis_windows/
+*.pdb
+*.exe
