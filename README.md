@@ -5,74 +5,65 @@ Professional barber booking system integrated with Telegram. This project featur
 ## 🌟 Features
 
 - **Telegram Mini App (TMA)**: A sleek, mobile-first interface for users to browse barbers, view services, and book appointments.
+- **Dual-Backend Architecture**: 
+  - **Django**: Handles complex administration, database management, and user roles.
+  - **FastAPI**: Provides a high-performance asynchronous API for the Mini App and real-time features.
 - **Dynamic Booking System**: Real-time availability tracking and seamless booking flow.
 - **Referral Program**: Built-in referral system where users can invite friends and earn bonuses.
-- **Admin Dashboard**: Comprehensive Django-based administration panel to manage barbers, clients, and bookings.
 - **Automated Notifications**: Instant Telegram notifications for booking confirmations and updates.
-- **Role-based Access**: Specialized interfaces for Clients, Barbers, and Admins.
 
 ## 🛠 Tech Stack
 
-- **Backend**: Python, [Django](https://wwww.djangoproject.com/)
+- **Backends**: Python ([Django](https://wwww.djangoproject.com/) & [FastAPI](https://fastapi.tiangolo.com/))
 - **Frontend**: React, Vite, Lucide Icons, Axios
-- **Database**: SQLite (Development) / PostgreSQL (Production)
+- **Database**: PostgreSQL
 - **Integration**: Telegram Bot API, Telegram WebApps API
-- **Styling**: Modern CSS with a focus on premium aesthetics (Apple-style design)
 
-## 📁 Project Structure
+## 📁 Repository Structure
 
-- `core/` - Django project configuration and settings.
-- `apps/` - Django application logic (models, views, serializers).
+To maintain professional standards, the repository is organized as follows:
+
+- `api/`, `apps/`, `core/` - Django backend components.
+- `src/` - FastAPI backend source code.
 - `mini-app/` - React-based Telegram Mini App source code.
-- `cutzilla_bot/` - Telegram bot interaction logic.
-- `src/` - Shared utilities and models.
-- `requirements.txt` - Python dependencies.
+- `scripts/` - Maintenance and utility scripts (database initialization, test data, etc.).
+- `archive/` - Archived/legacy components.
+- `manage.py` - Django management CLI.
+- `requirements.txt` - Project dependencies.
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 
 - Python 3.10+
+- PostgreSQL
 - Node.js & npm (for frontend)
-- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 
-### Backend Setup
+### Initialization
 
-1. Install dependencies:
+1. **Environment Setup**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual database and secret credentials
+   ```
+
+2. **Dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Run migrations:
+3. **Database Setup**:
    ```bash
    python manage.py migrate
+   # Use scripts for specialized setup
+   python scripts/setup_database.py
    ```
 
-3. Start the server:
-   ```bash
-   python manage.py runserver
-   ```
+### Running the Project
 
-### Frontend Setup
-
-1. Navigate to the mini-app directory:
-   ```bash
-   cd mini-app
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the dev server:
-   ```bash
-   npm run dev
-   ```
-
-## 📄 License
-
-This project is licensed under the MIT License.
+- **Django Admin**: `python manage.py runserver`
+- **FastAPI Backend**: `uvicorn src.main:app --reload`
+- **Frontend (Mini App)**: `cd mini-app && npm run dev`
 
 ---
 Developed with ❤️ by Begzod (Cutzilla Team)
